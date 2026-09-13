@@ -6,6 +6,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+const smoothstep = (a, b, v) => {
+  const t = clamp((v - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 const TAU = Math.PI * 2;
 function lerpColor(a, b, t) {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -86,21 +90,21 @@ const BIOMES = [
     bg0: "#03050c", bg1: "#050a16",
     moteSmall: "#6fe8ff", moteBig: "#c9a8ff", moteRare: "#eafff5",
     shadow: "#7a3fe0", shadowCore: "#1a0630",
-    auraA: "#8ff5e0", auraB: "#7a3fe0",
+    auraA: "#8ff5e0", auraB: "#7a3fe0", cloudSeed: 0.35,
   },
   {
-    id: 1, name: "Grieta violeta", unlockLevel: 2, worldPos: { x: 3000, y: -1900 },
+    id: 1, name: "Grieta violeta", unlockLevel: 2, worldPos: { x: 2200, y: -1250 },
     bg0: "#0a0414", bg1: "#170826",
     moteSmall: "#c98bff", moteBig: "#ff8bd6", moteRare: "#f6e8ff",
     shadow: "#3f1fa0", shadowCore: "#120428",
-    auraA: "#c98bff", auraB: "#3f1fa0",
+    auraA: "#c98bff", auraB: "#3f1fa0", cloudSeed: 2.15,
   },
   {
-    id: 2, name: "Umbral cian", unlockLevel: 4, worldPos: { x: -2600, y: 2400 },
+    id: 2, name: "Umbral cian", unlockLevel: 4, worldPos: { x: -1900, y: 1500 },
     bg0: "#020a0c", bg1: "#031418",
     moteSmall: "#bdfff0", moteBig: "#7fe0ff", moteRare: "#ffffff",
     shadow: "#2f7a86", shadowCore: "#04181a",
-    auraA: "#bdfff0", auraB: "#2f7a86",
+    auraA: "#bdfff0", auraB: "#2f7a86", cloudSeed: 4.4,
   },
 ];
 function applyBiome(id) {
@@ -349,6 +353,7 @@ document.addEventListener("fullscreenchange", () => {
 
 // ---------- Cámara ----------
 const ZOOM_MIN = 0.05;
+const BIOME_ARRIVAL_RADIUS = 520;
 const camera = {
   shakeMag: 0,
   x: 0, y: 0,
@@ -390,10 +395,10 @@ class DustLayer {
       if (it.y > H + 5) { it.y = -5; it.x = rand(0, W); }
     }
   }
-  draw(lightGlow) {
+  draw(lightGlow, sceneAlpha = 1) {
     ctx.save();
     for (const it of this.items) {
-      ctx.globalAlpha = it.a * (0.5 + lightGlow * 0.5);
+      ctx.globalAlpha = sceneAlpha * it.a * (0.5 + lightGlow * 0.5);
       ctx.fillStyle = "#bfe9ff";
       ctx.beginPath();
       ctx.arc(it.x, it.y, it.r, 0, TAU);
@@ -421,10 +426,10 @@ class Bokeh {
       if (it.x > W + 140) it.x = -140;
     }
   }
-  draw(lightGlow) {
+  draw(lightGlow, sceneAlpha = 1) {
     ctx.save();
     for (const it of this.items) {
-      ctx.globalAlpha = it.a * (0.4 + lightGlow * 0.6);
+      ctx.globalAlpha = sceneAlpha * it.a * (0.4 + lightGlow * 0.6);
       const g = ctx.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r);
       g.addColorStop(0, it.hue);
       g.addColorStop(1, "transparent");
@@ -463,7 +468,7 @@ class ChillAura {
       if (it.y > H + it.r) it.y = -it.r;
     }
   }
-  draw(t) {
+  draw(t, sceneAlpha = 1) {
     ctx.save();
     for (const it of this.items) {
       // Deriva de color muy lenta (ciclo de varios minutos) entre los dos
@@ -473,7 +478,7 @@ class ChillAura {
       const col = lerpColor(COL.player, COL.shadow, huT);
       const breathe = 0.6 + Math.sin(t * it.freq + it.phase) * 0.4;
       const rBreathe = 1 + Math.sin(t * it.rFreq + it.rPhase) * 0.15;
-      ctx.globalAlpha = it.baseA * breathe;
+      ctx.globalAlpha = sceneAlpha * it.baseA * breathe;
       const R = it.r * rBreathe;
       const g = ctx.createRadialGradient(it.x, it.y, 0, it.x, it.y, R);
       g.addColorStop(0, col);
@@ -570,20 +575,20 @@ class Particles {
     }
     this.list = this.list.filter((p) => p.t < p.life);
   }
-  draw() {
+  draw(sceneAlpha = 1) {
     ctx.save();
     for (const p of this.list) {
       const k = 1 - p.t / p.life;
       if (p.type === "ring") {
         const r = lerp(p.r, p.r1, p.t / p.life);
-        ctx.globalAlpha = k * 0.6;
+        ctx.globalAlpha = sceneAlpha * k * 0.6;
         ctx.strokeStyle = p.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(p.x, p.y, r, 0, TAU);
         ctx.stroke();
       } else if (p.type === "dot") {
-        ctx.globalAlpha = k;
+        ctx.globalAlpha = sceneAlpha * k;
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color;
         ctx.shadowBlur = 8;
@@ -591,7 +596,7 @@ class Particles {
         ctx.arc(p.x, p.y, p.r * k, 0, TAU);
         ctx.fill();
       } else if (p.type === "ash") {
-        ctx.globalAlpha = k * 0.8;
+        ctx.globalAlpha = sceneAlpha * k * 0.8;
         ctx.fillStyle = "#140018";
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, TAU);
@@ -712,6 +717,10 @@ class Mote {
     this.respawn();
     this.x = rand(0, W); this.y = rand(0, H);
     this.phase = rand(0, TAU);
+    // arriveAtBiome reemplaza las motas durante update() y draw() ocurre en
+    // ese mismo frame. Debe existir antes del primer Mote.update para que el
+    // radio del gradiente nunca reciba NaN y detenga todo el canvas.
+    this.flicker = 1;
   }
   respawn() {
     const edge = Math.floor(rand(0, 4));
@@ -748,10 +757,11 @@ class Mote {
     this.flicker = 0.75 + Math.sin(t * (this.rare ? 6 : 3) + this.phase) * 0.25;
     if (this.x < -60 || this.x > W + 60 || this.y < -60 || this.y > H + 60) this.respawn();
   }
-  draw() {
+  draw(sceneAlpha = 1) {
     const R = this.r * this.flicker;
     const color = this.rare ? COL.moteRare : this.big ? COL.moteBig : COL.moteSmall;
     ctx.save();
+    ctx.globalAlpha = sceneAlpha;
     const glow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, R * 4);
     glow.addColorStop(0, color + "cc");
     glow.addColorStop(1, color + "00");
@@ -855,7 +865,7 @@ class Tendril {
     for (const p of this.points) min = Math.min(min, dist(px, py, p.x, p.y));
     return min;
   }
-  draw() {
+  draw(sceneAlpha = 1) {
     if (this.alpha <= 0.01) return;
     const pts = this.points;
     if (pts.length < 2) return;
@@ -865,7 +875,7 @@ class Tendril {
       // sin adelantar información que el jugador no tendría en pantalla.
       const tele = Math.sin(this.alpha * Math.PI);
       ctx.save();
-      ctx.globalAlpha = tele * 0.7;
+      ctx.globalAlpha = sceneAlpha * tele * 0.7;
       const g = ctx.createRadialGradient(this.spawnX, this.spawnY, 0, this.spawnX, this.spawnY, 60 + tele * 40);
       g.addColorStop(0, COL.shadow + "cc");
       g.addColorStop(1, COL.shadow + "00");
@@ -895,7 +905,7 @@ class Tendril {
       right.push({ x: p.x - nx * w, y: p.y - ny * w });
     }
     ctx.save();
-    ctx.globalAlpha = this.alpha;
+    ctx.globalAlpha = sceneAlpha * this.alpha;
 
     ctx.beginPath();
     ctx.moveTo(left[0].x, left[0].y);
@@ -1108,7 +1118,9 @@ function updatePlaying(dt) {
       for (const b of BIOMES) {
         if (b.id === state.biome) continue;
         if (Settings.getUnlockedLevel() < b.unlockLevel) continue;
-        if (dist(curAbsX, curAbsY, b.worldPos.x, b.worldPos.y) < 260) { arriveAtBiome(b.id); break; }
+        // La llegada coincide con entrar en la mancha visible, no con acertar
+        // un punto diminuto en su centro. Esto mantiene el viaje relajado.
+        if (dist(curAbsX, curAbsY, b.worldPos.x, b.worldPos.y) < BIOME_ARRIVAL_RADIUS) { arriveAtBiome(b.id); break; }
       }
     }
     return;
@@ -1280,6 +1292,147 @@ function drawVignette(lr) {
   g.addColorStop(1, "rgba(0,0,0,0.82)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
+}
+
+// Vista de mapa: cada zona se condensa en una nube de color sin bordes ni
+// iconos. Las formas se construyen con lóbulos superpuestos y deterministas;
+// así parecen materia suspendida, no un círculo, panel o miniatura del juego.
+function drawBiomeCurrent(fromX, fromY, toX, toY, color, alpha, t, seed) {
+  if (alpha <= 0.001) return;
+  const dx = toX - fromX, dy = toY - fromY;
+  const d = Math.max(1, Math.hypot(dx, dy));
+  const nx = -dy / d, ny = dx / d;
+  const sway = Math.sin(t * 0.055 + seed) * 120;
+  const c1x = fromX + dx * 0.34 + nx * (180 + sway);
+  const c1y = fromY + dy * 0.34 + ny * (180 + sway);
+  const c2x = fromX + dx * 0.7 - nx * (130 - sway * 0.5);
+  const c2y = fromY + dy * 0.7 - ny * (130 - sway * 0.5);
+  const gradient = ctx.createLinearGradient(fromX, fromY, toX, toY);
+  gradient.addColorStop(0, color + "00");
+  gradient.addColorStop(0.2, color + "55");
+  gradient.addColorStop(0.8, color + "70");
+  gradient.addColorStop(1, color + "00");
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.strokeStyle = gradient;
+  ctx.lineCap = "round";
+  ctx.globalAlpha = alpha * 0.22;
+  ctx.lineWidth = 90;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.bezierCurveTo(c1x, c1y, c2x, c2y, toX, toY);
+  ctx.stroke();
+
+  for (let i = -1; i <= 1; i++) {
+    ctx.globalAlpha = alpha * (i === 0 ? 0.62 : 0.28);
+    ctx.lineWidth = i === 0 ? 11 : 5;
+    ctx.beginPath();
+    ctx.moveTo(fromX + nx * i * 42, fromY + ny * i * 42);
+    ctx.bezierCurveTo(
+      c1x + nx * i * 64,
+      c1y + ny * i * 64,
+      c2x + nx * i * 48,
+      c2y + ny * i * 48,
+      toX + nx * i * 22,
+      toY + ny * i * 22
+    );
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBiomeCloud(biome, x, y, alpha, t, locked = false, current = false) {
+  if (alpha <= 0.001) return;
+  const breathe = 1 + Math.sin(t * 0.16 + biome.cloudSeed) * 0.045;
+  const presence = locked ? 0.46 : current ? 1.05 : 1;
+  const lobes = [
+    { x: 0, y: 0, rx: 760, ry: 500, rot: -0.18, color: biome.auraB, a: 0.74 },
+    { x: -275, y: 60, rx: 470, ry: 315, rot: 0.42, color: biome.auraA, a: 0.66 },
+    { x: 285, y: -85, rx: 440, ry: 285, rot: -0.55, color: biome.auraA, a: 0.56 },
+    { x: 80, y: 220, rx: 410, ry: 250, rot: 0.18, color: biome.auraB, a: 0.48 },
+    { x: -40, y: -215, rx: 350, ry: 205, rot: 0.72, color: biome.auraA, a: 0.38 },
+  ];
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+
+  // Halo exterior muy tenue: hace legible cada destino incluso en el zoom
+  // mínimo, sin convertirlo en un marcador o una figura geométrica dura.
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(900 * breathe, 610 * breathe);
+  const halo = ctx.createRadialGradient(0, 0, 0.15, 0, 0, 1);
+  halo.addColorStop(0, biome.auraA + (locked ? "24" : "48"));
+  halo.addColorStop(0.55, biome.auraB + (locked ? "16" : "32"));
+  halo.addColorStop(1, biome.auraB + "00");
+  ctx.globalAlpha = alpha * presence;
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+
+  for (let i = 0; i < lobes.length; i++) {
+    const lobe = lobes[i];
+    const driftX = Math.sin(t * 0.035 + biome.cloudSeed + i * 1.7) * 22;
+    const driftY = Math.cos(t * 0.03 + biome.cloudSeed * 1.3 + i) * 18;
+    ctx.save();
+    ctx.translate(x + lobe.x + driftX, y + lobe.y + driftY);
+    ctx.rotate(lobe.rot + Math.sin(t * 0.012 + i) * 0.025);
+    ctx.scale(lobe.rx * breathe, lobe.ry * breathe);
+    const g = ctx.createRadialGradient(-0.14, -0.12, 0, 0, 0, 1);
+    g.addColorStop(0, lobe.color + "9c");
+    g.addColorStop(0.42, lobe.color + "52");
+    g.addColorStop(0.76, lobe.color + "1f");
+    g.addColorStop(1, lobe.color + "00");
+    ctx.globalAlpha = alpha * presence * lobe.a;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Contornos respirando, casi imperceptibles en reposo. Dan riqueza a la
+  // nube sin introducir estrellas, iconos ni movimiento nervioso.
+  for (let i = 0; i < 3; i++) {
+    const wave = 1 + ((t * 0.025 + biome.cloudSeed * 0.1 + i / 3) % 1) * 0.5;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-0.18 + i * 0.09);
+    ctx.scale(720 * wave, 455 * wave);
+    ctx.globalAlpha = alpha * presence * (1.5 - wave) * 0.16;
+    ctx.strokeStyle = i % 2 ? biome.auraA : biome.auraB;
+    ctx.lineWidth = 7 / (720 * wave);
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawBiomeMapStatus(alpha) {
+  if (alpha <= 0.01 || state.mode !== "playing") return;
+  const unlocked = BIOMES.filter((b) => Settings.getUnlockedLevel() >= b.unlockLevel).length;
+  const next = BIOMES.find((b) => Settings.getUnlockedLevel() < b.unlockLevel);
+  const y = H - 108 * UI;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.globalAlpha = alpha;
+  ctx.font = fnt(11, "600");
+  ctx.fillStyle = "rgba(224,246,246,0.72)";
+  ctx.shadowColor = "rgba(120,220,210,0.35)";
+  ctx.shadowBlur = 12;
+  ctx.fillText(`${unlocked} / ${BIOMES.length} BIOMAS DESPIERTOS`, W / 2, y);
+  if (next) {
+    ctx.shadowBlur = 0;
+    ctx.font = fnt(10);
+    ctx.fillStyle = "rgba(190,212,220,0.48)";
+    ctx.fillText(`el próximo despierta al completar el nivel ${next.unlockLevel}`, W / 2, y + 18 * UI);
+  }
+  ctx.restore();
 }
 
 function drawMeter(lr) {
@@ -1525,40 +1678,70 @@ function draw() {
   ctx.translate(W / 2 - zoom * (W / 2 + pan.x), H / 2 - zoom * (H / 2 + pan.y));
   ctx.scale(zoom, zoom);
 
+  // Al alejarnos, los objetos concretos desaparecen antes de poder leerse
+  // como "estrellas". En su lugar se revela el mapa de manchas orgánicas.
+  // Las dos capas se cruzan suavemente y nunca exponen el rectángulo del
+  // viewport local.
+  const mapAlpha = smoothstep(0.94, 0.58, zoom);
+  const worldDetailAlpha = smoothstep(0.42, 0.82, zoom);
   const biomeLabels = [];
-  if (zoom < 0.92 && state.runCfg) {
+  if (mapAlpha > 0 && state.runCfg) {
     const origin = BIOMES[state.biome].worldPos;
-    for (const b of BIOMES) {
-      if (b.id === state.biome) continue;
-      if (Settings.getUnlockedLevel() < b.unlockLevel) continue;
-      const relX = W / 2 + (b.worldPos.x - origin.x);
-      const relY = H / 2 + (b.worldPos.y - origin.y);
-      const R = 620;
-      const g = ctx.createRadialGradient(relX, relY, 0, relX, relY, R);
-      g.addColorStop(0, b.auraA + "55");
-      g.addColorStop(0.45, b.auraB + "33");
-      g.addColorStop(1, "transparent");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(relX, relY, R, 0, TAU);
-      ctx.fill();
-      biomeLabels.push({ x: W / 2 - zoom * (W / 2 + pan.x) + relX * zoom, y: H / 2 - zoom * (H / 2 + pan.y) + relY * zoom, name: b.name });
+    const views = BIOMES.map((b) => ({
+      biome: b,
+      x: W / 2 + (b.worldPos.x - origin.x),
+      y: H / 2 + (b.worldPos.y - origin.y),
+      locked: Settings.getUnlockedLevel() < b.unlockLevel,
+      current: b.id === state.biome,
+    }));
+
+    // Corrientes que nacen en el bioma actual: no son caminos rígidos, sino
+    // filamentos lentos que hacen comprensible el mapa de un vistazo.
+    for (const view of views) {
+      if (view.current) continue;
+      drawBiomeCurrent(
+        W / 2,
+        H / 2,
+        view.x,
+        view.y,
+        view.biome.auraA,
+        mapAlpha * (view.locked ? 0.28 : 0.72),
+        state.t,
+        view.biome.cloudSeed
+      );
+    }
+
+    for (const view of views) {
+      drawBiomeCloud(view.biome, view.x, view.y, mapAlpha, state.t, view.locked, view.current);
+      const sx = W / 2 - zoom * (W / 2 + pan.x) + view.x * zoom;
+      const sy = H / 2 - zoom * (H / 2 + pan.y) + view.y * zoom;
+      if (sx < -90 * UI || sx > W + 90 * UI || sy < -90 * UI || sy > H + 90 * UI) continue;
+      const labelOffset = Math.max(40 * UI, 350 * zoom);
+      const labelDirection = sy > H * 0.62 ? -1 : 1;
+      biomeLabels.push({
+        x: clamp(sx, 130 * UI, W - 130 * UI),
+        y: clamp(sy + labelOffset * labelDirection, 70 * UI, H - 135 * UI),
+        name: view.biome.name,
+        locked: view.locked,
+        current: view.current,
+        unlockLevel: view.biome.unlockLevel,
+      });
     }
   }
 
   const ambientModes = ["menu", "settings", "levelSelect"];
   const lr = ambientModes.includes(state.mode) ? 0.15 : lightRatio();
-  if (state.runCfg && state.runCfg.flavor === "chill") chillAura.draw(state.t);
-  dustLayers.forEach((l) => l.draw(lr));
-  bokeh.draw(lr);
+  if (state.runCfg && state.runCfg.flavor === "chill") chillAura.draw(state.t, worldDetailAlpha);
+  dustLayers.forEach((l) => l.draw(lr, worldDetailAlpha));
+  bokeh.draw(lr, worldDetailAlpha);
 
   const worldModes = ["playing", "paused"];
   if (worldModes.includes(state.mode)) {
-    for (const m of state.motes) m.draw();
-    for (const tdr of state.tendrils) tdr.draw();
+    for (const m of state.motes) m.draw(worldDetailAlpha);
+    for (const tdr of state.tendrils) tdr.draw(worldDetailAlpha);
   }
 
-  particles.draw();
+  particles.draw(worldDetailAlpha);
 
   const pulse = state.mode === "playing" && lr < 0.18 ? (Math.sin(state.t * 8) * 0.5 + 0.5) * (0.18 - lr) * 4 : 0;
   const baseR = 15;
@@ -1595,37 +1778,51 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
-  drawVignette(state.mode === "lose" ? lr * clamp(1 - state.fadeT / 1.4, 0, 1) : lr);
+  ctx.restore();
 
+  // Vignette y flashes pertenecen a la pantalla, no al mundo. Si se
+  // transforman con la cámara se convierten en el rectángulo oscuro que se
+  // veía en la captura al alejar el zoom.
+  drawVignette(state.mode === "lose" ? lr * clamp(1 - state.fadeT / 1.4, 0, 1) : lr);
   if (state.flash > 0) {
     ctx.fillStyle = `rgba(255,70,60,${state.flash * 0.22})`;
-    ctx.fillRect(-40, -40, W + 80, H + 80);
+    ctx.fillRect(0, 0, W, H);
   }
   if (state.mode === "lose") {
     ctx.fillStyle = `rgba(0,0,0,${clamp(state.fadeT / 1.4, 0, 1) * 0.9})`;
-    ctx.fillRect(-40, -40, W + 80, H + 80);
+    ctx.fillRect(0, 0, W, H);
   }
   if (state.mode === "blooming") {
     const k = clamp(state.bloomT / state.runCfg.bloomDuration, 0, 1);
     ctx.fillStyle = `rgba(255,226,170,${k * 0.35})`;
-    ctx.fillRect(-40, -40, W + 80, H + 80);
+    ctx.fillRect(0, 0, W, H);
   }
-
-  ctx.restore();
 
   if (biomeLabels.length) {
     ctx.save();
     ctx.textAlign = "center";
-    ctx.font = fnt(13, "600");
     for (const lbl of biomeLabels) {
-      const a = clamp((0.92 - zoom) / 0.5, 0, 1) * 0.75;
+      const a = mapAlpha * (lbl.locked ? 0.46 : lbl.current ? 0.72 : 0.9);
+      ctx.font = fnt(lbl.current ? 12 : 13, "600");
       ctx.fillStyle = `rgba(234,255,250,${a})`;
-      ctx.shadowColor = "rgba(180,220,255,0.6)";
-      ctx.shadowBlur = 14;
+      ctx.shadowColor = lbl.locked ? "rgba(130,150,170,0.25)" : "rgba(180,230,255,0.65)";
+      ctx.shadowBlur = lbl.locked ? 7 : 16;
       ctx.fillText(lbl.name.toUpperCase(), lbl.x, lbl.y);
+
+      ctx.shadowBlur = 0;
+      ctx.font = fnt(9, "500");
+      ctx.fillStyle = `rgba(205,226,230,${a * 0.68})`;
+      const detail = lbl.current
+        ? "ESTÁS AQUÍ"
+        : lbl.locked
+          ? `COMPLETA EL NIVEL ${lbl.unlockLevel} PARA DESPERTARLO`
+          : "VIAJA HACIA SU LUZ";
+      ctx.fillText(detail, lbl.x, lbl.y + 17 * UI);
     }
     ctx.restore();
   }
+
+  drawBiomeMapStatus(mapAlpha * 0.85);
 
   clearHotspots();
   if (state.mode === "menu") drawMenuScreen();

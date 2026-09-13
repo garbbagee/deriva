@@ -229,14 +229,23 @@ te transporta ahí, con auto-zoom de regreso a la vista normal.
   "Umbral cian" tras superar 4. Esto es lo que satisface la regla "por
   niveles" para esta feature — no hay toggle nuevo en Chill porque v1 sólo
   cambia paleta/motas, ningún peligro nuevo. El día que un bioma sume una
-  amenaza propia, esa amenaza sí necesita su toggle en Chill.
+  amenaza propia, esa amenaza sí necesita su toggle en Chill. Los biomas aún
+  bloqueados se ven a lo lejos como ecos atenuados, con el nivel necesario
+  para despertarlos; se pueden descubrir desde Chill pero no visitar antes
+  de desbloquearlos.
 - **Una sola transformación de cámara** sirve tanto para el juego normal
   como para viajar: `zoom=1, pan=(0,0)` es la identidad exacta (cero
   cambio en partidas normales). `camera.pan()` sólo empieza a centrar la
   cámara en el jugador conforme el zoom baja (0 en juego normal, por
   diseño la cámara es fija — ver arriba). Los nodos de otros biomas se
   dibujan con la misma matriz que las entidades locales, como si fueran
-  parte de la misma escena.
+  parte de la misma escena. Durante el alejamiento hay un fundido cruzado:
+  motas, polvo y zarcillos pierden detalle antes de parecer estrellas, y
+  cada zona (incluida la actual) se condensa en una mancha orgánica de color
+  sin borde rectangular. Viñeta, flashes y HUD permanecen en coordenadas de
+  pantalla y nunca se escalan con el mundo. Halos respirando y corrientes
+  luminosas lentas conectan el bioma actual con los destinos; su brillo indica
+  cuáles están despiertos sin convertir el mapa en una interfaz rígida.
 - **El objetivo del puntero/teclado se reinterpreta en espacio local**
   según zoom/pan (`player.update`), así que la física de seguimiento
   existente (spring-damper) no cambió — sólo lo que cuenta como "el punto
@@ -254,6 +263,8 @@ te transporta ahí, con auto-zoom de regreso a la vista normal.
   zarcillos/corrientes, jugador recentrado, `camera.zoomTarget=1` dispara
   el acercamiento automático. La sesión (Luz, racha, tiempo) continúa sin
   cortes — llegar a un bioma nuevo es ambientación, no un reinicio.
+  El radio de llegada coincide con la zona luminosa visible (520 unidades),
+  para que baste entrar en la nube y no haya que acertar un punto diminuto.
 - El jugador nunca cambia de color entre biomas (identidad constante);
   sólo el entorno — fondo, motas, zarcillos — cambia.
 
