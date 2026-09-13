@@ -81,6 +81,23 @@ menú, juego, victoria, derrota, reinicio. Nada más.
   contador (`chillBlooms`, tope 8) que escala muy levemente el tamaño/valor
   de las motas nuevas. Sesiones largas de farmeo se sienten un poco más
   abundantes con el tiempo, sin introducir fracaso ni presión.
+- **Floraciones cada vez más costosas (sólo Chill):** el objetivo de Luz ya
+  no es fijo en 100 — escala por floración: 50, 150, 300, 600, 1000 y sigue
+  multiplicándose ×1.6 más allá de esa lista (`chillLightMax()`). Cada
+  floración reinicia la Luz a un tercio del *nuevo* objetivo, igual que
+  antes, sólo que el objetivo crece. Así volver a florecer nunca se siente
+  como un bucle repetitivo — cada vez pide más de la sesión. El HUD de Chill
+  muestra `luz actual / objetivo` abajo a la izquierda para que el jugador
+  vea la meta creciente (antes ese espacio mostraba el cronómetro, que no
+  aplica en Chill).
+- **Aura ambiental de Chill:** capa de fondo muy abstracta y de contraste
+  bajísimo (alpha 0.02–0.04), 4 manchas enormes de gradiente radial en los
+  dos tonos fríos de la paleta (cian del jugador / violeta de sombra —
+  nunca el dorado de la floración), que derivan muy lento y "respiran" en
+  alpha con periodos largos e independientes. Sólo existe en Chill, se
+  dibuja detrás de todo (incluso detrás del polvo de profundidad), y no
+  reacciona a peligro ni progreso — es puramente ambiental, para acompañar
+  sesiones largas sin nunca competir visualmente con motas o zarcillos.
 
 ## Modos de juego
 - **Deriva (clásico):** la experiencia original descrita arriba.

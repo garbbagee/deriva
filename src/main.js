@@ -384,6 +384,48 @@ class Bokeh {
 }
 const bokeh = new Bokeh(7);
 
+// ---------- Aura de Chill: respaldo ambiental muy abstracto y de bajísimo
+// contraste, pensado para sesiones largas y relajadas. Sólo se activa en
+// modo Chill; deriva muy lento, respira en alpha, nunca usa el dorado
+// reservado a la floración y jamás compite visualmente con motas/zarcillos.
+class ChillAura {
+  constructor(count) {
+    this.items = Array.from({ length: count }, () => ({
+      x: rand(0, W), y: rand(0, H), r: rand(260, 460),
+      vx: rand(-1.1, 1.1), vy: rand(-1.1, 1.1),
+      hue: Math.random() < 0.5 ? COL.player : COL.shadow,
+      phase: rand(0, TAU), freq: rand(0.045, 0.085),
+      baseA: rand(0.02, 0.04),
+    }));
+  }
+  update(dt) {
+    for (const it of this.items) {
+      it.x += it.vx * dt;
+      it.y += it.vy * dt;
+      if (it.x < -it.r) it.x = W + it.r;
+      if (it.x > W + it.r) it.x = -it.r;
+      if (it.y < -it.r) it.y = H + it.r;
+      if (it.y > H + it.r) it.y = -it.r;
+    }
+  }
+  draw(t) {
+    ctx.save();
+    for (const it of this.items) {
+      const breathe = 0.6 + Math.sin(t * it.freq + it.phase) * 0.4;
+      ctx.globalAlpha = it.baseA * breathe;
+      const g = ctx.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r);
+      g.addColorStop(0, it.hue);
+      g.addColorStop(1, "transparent");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(it.x, it.y, it.r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+const chillAura = new ChillAura(4);
+
 // ---------- Partículas ----------
 class Particles {
   constructor() { this.list = []; }
@@ -787,6 +829,17 @@ const LEVELS = [
   { name: "Nivel 5", target: 120, time: 65, tendrilBase: 3, tendrilExtra: 3, speedMul: 1.6 },
 ];
 
+// Cada floración en Chill exige más que la anterior (50, 150, 300, 600,
+// 1000...) para que volver a florecer se sienta como una meta creciente en
+// vez de un bucle repetitivo — más allá de la lista, sigue escalando.
+const CHILL_BLOOM_THRESHOLDS = [50, 150, 300, 600, 1000];
+function chillLightMax(blooms) {
+  if (blooms < CHILL_BLOOM_THRESHOLDS.length) return CHILL_BLOOM_THRESHOLDS[blooms];
+  let v = CHILL_BLOOM_THRESHOLDS[CHILL_BLOOM_THRESHOLDS.length - 1];
+  for (let i = CHILL_BLOOM_THRESHOLDS.length; i <= blooms; i++) v = Math.round(v * 1.6);
+  return v;
+}
+
 function buildRunCfg(flavor, levelIndex) {
   if (flavor === "chill") {
     const density = Settings.get("chillTendrils");
@@ -796,7 +849,7 @@ function buildRunCfg(flavor, levelIndex) {
       normal: { tendrilBase: 1, tendrilExtra: 3 },
     };
     const d = map[density] || map.few;
-    return { flavor, lightMax: 100, decay: 0, tendrilBase: d.tendrilBase, tendrilExtra: d.tendrilExtra, speedMul: 0.85, timeLimit: null, noLose: true, loopBloom: true, bloomDuration: 0.9 };
+    return { flavor, lightMax: chillLightMax(0), decay: 0, tendrilBase: d.tendrilBase, tendrilExtra: d.tendrilExtra, speedMul: 0.85, timeLimit: null, noLose: true, loopBloom: true, bloomDuration: 0.9 };
   }
   if (flavor === "levels") {
     const lvl = LEVELS[levelIndex];
@@ -997,9 +1050,10 @@ function updateBlooming(dt) {
   player.trail = [];
   if (state.bloomT > state.runCfg.bloomDuration) {
     if (state.runCfg.loopBloom) {
+      state.chillBlooms++;
+      if (state.runCfg.flavor === "chill") state.runCfg.lightMax = chillLightMax(state.chillBlooms);
       state.light = state.runCfg.lightMax * 0.32;
       state.mode = "playing";
-      state.chillBlooms++;
       player.x = W / 2; player.y = H / 2;
       player.invuln = 0; player.hitFlash = 0;
     } else {
@@ -1016,6 +1070,7 @@ function update(dt) {
   camera.update(dt);
   dustLayers.forEach((l) => l.update(dt, state.t));
   bokeh.update(dt);
+  if (state.runCfg && state.runCfg.flavor === "chill") chillAura.update(dt);
   particles.update(dt);
 
   if (state.mode === "playing") updatePlaying(dt);
@@ -1200,7 +1255,10 @@ function drawHud(lr) {
   if (cfg.timeLimit != null) {
     ctx.fillStyle = state.timeLeft < 8 ? "rgba(255,150,140,0.85)" : "rgba(210,235,235,0.5)";
     ctx.fillText(`${Math.ceil(state.timeLeft)}s restantes`, margin, H - margin);
-  } else if (cfg.flavor !== "chill") {
+  } else if (cfg.flavor === "chill") {
+    ctx.fillStyle = "rgba(210,235,235,0.4)";
+    ctx.fillText(`${Math.round(state.light)} / ${cfg.lightMax}`, margin, H - margin);
+  } else {
     ctx.fillStyle = "rgba(210,235,235,0.5)";
     ctx.fillText(`${state.time.toFixed(1)}s`, margin, H - margin);
   }
@@ -1279,6 +1337,7 @@ function draw() {
 
   const ambientModes = ["menu", "settings", "levelSelect"];
   const lr = ambientModes.includes(state.mode) ? 0.15 : lightRatio();
+  if (state.runCfg && state.runCfg.flavor === "chill") chillAura.draw(state.t);
   dustLayers.forEach((l) => l.draw(lr));
   bokeh.draw(lr);
 
