@@ -172,6 +172,22 @@ un vector de silueta desbocado) y se subió el grosor/opacidad mínimos de la
 punta, para que ningún zarcillo llegue a leerse como "borrado" por su propio
 desvanecimiento hacia la punta.
 
+## Corrientes invisibles y zumbido de la mota rara
+- **Corrientes:** dos remolinos (`Current`) derivan lentamente por la
+  escena (trayectoria propia tipo Lissajous, nunca en línea recta) y
+  empujan tangencialmente — nunca hacia/desde su centro — a quien entra en
+  su radio. No se dibujan: son textura del espacio, no un peligro. El
+  empuje es más débil sobre la gota (50%) que sobre las motas (100%), para
+  que el agua deje de sentirse como un vacío uniforme sin robarle al
+  jugador el control directo. Activas en los tres modos de juego.
+- **Zumbido de la mota rara:** tono agudo y suave (`Audio2.rareHum`,
+  distinto en timbre del chime normal) cuya intensidad sube cuanto más
+  cerca está la mota rara del jugador (caída cuadrática hasta 420px) con
+  un ligero pulso propio — perseguirla se guía también por oído, no sólo
+  por vista. Se silencia con una rampa suave (`setTargetAtTime`) en
+  cualquier modo que no sea "jugando", para que nunca quede sonando de
+  fondo en menús o pausa.
+
 ## Investigación: la gota se veía "rara"
 Causa raíz: el pulso de crecimiento al comer una mota grande (`popScale`)
 deformaba la gota por *dos* caminos a la vez — el radio (`R`) y además el

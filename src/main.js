@@ -441,6 +441,50 @@ class ChillAura {
 }
 const chillAura = new ChillAura(4);
 
+// ---------- Corrientes invisibles ----------
+// Dos remolinos lentos que derivan por la escena y empujan tangencialmente
+// (nunca hacia/desde su centro, siempre "alrededor") a quien esté cerca.
+// No se dibujan: son textura del espacio, no un peligro — la intención es
+// que el agua deje de sentirse como un vacío uniforme sin romper el control
+// directo del jugador (el empuje es mucho más débil sobre la gota que
+// sobre las motas).
+class Current {
+  constructor() {
+    this.baseX = rand(W * 0.3, W * 0.7);
+    this.baseY = rand(H * 0.3, H * 0.7);
+    this.ampX = rand(W * 0.22, W * 0.34);
+    this.ampY = rand(H * 0.22, H * 0.34);
+    this.freqX = rand(0.02, 0.035);
+    this.freqY = rand(0.018, 0.03);
+    this.phaseX = rand(0, TAU);
+    this.phaseY = rand(0, TAU);
+    this.radius = rand(220, 320);
+    this.strength = rand(26, 42) * (Math.random() < 0.5 ? 1 : -1);
+    this.cx = this.baseX;
+    this.cy = this.baseY;
+  }
+  update(t) {
+    this.cx = this.baseX + Math.sin(t * this.freqX + this.phaseX) * this.ampX;
+    this.cy = this.baseY + Math.sin(t * this.freqY + this.phaseY) * this.ampY;
+  }
+  forceAt(x, y) {
+    const dx = x - this.cx, dy = y - this.cy;
+    const d = Math.hypot(dx, dy);
+    if (d > this.radius || d < 1) return { fx: 0, fy: 0 };
+    const mag = this.strength * (1 - d / this.radius);
+    return { fx: (-dy / d) * mag, fy: (dx / d) * mag };
+  }
+}
+function currentForceAt(x, y) {
+  let fx = 0, fy = 0;
+  if (!state.currents) return { fx, fy };
+  for (const c of state.currents) {
+    const f = c.forceAt(x, y);
+    fx += f.fx; fy += f.fy;
+  }
+  return { fx, fy };
+}
+
 // ---------- Partículas ----------
 class Particles {
   constructor() { this.list = []; }
@@ -534,7 +578,8 @@ const player = {
     const k = 34 * sens, damp = 8.2 * Math.sqrt(sens);
     const ax = (tx - this.x) * k - this.vx * damp;
     const ay = (ty - this.y) * k - this.vy * damp;
-    this.vx += ax * dt; this.vy += ay * dt;
+    const cur = currentForceAt(this.x, this.y);
+    this.vx += (ax + cur.fx * 0.5) * dt; this.vy += (ay + cur.fy * 0.5) * dt;
     this.x += this.vx * dt; this.y += this.vy * dt;
 
     const speed = Math.hypot(this.vx, this.vy);
@@ -639,8 +684,9 @@ class Mote {
         this.vy = lerp(this.vy, Math.sin(away) * (60 + flee), 0.06);
       }
     }
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
+    const cur = currentForceAt(this.x, this.y);
+    this.x += (this.vx + cur.fx) * dt;
+    this.y += (this.vy + cur.fy) * dt;
     this.flicker = 0.75 + Math.sin(t * (this.rare ? 6 : 3) + this.phase) * 0.25;
     if (this.x < -60 || this.x > W + 60 || this.y < -60 || this.y > H + 60) this.respawn();
   }
@@ -888,6 +934,7 @@ const state = {
   motesEaten: 0,
   motes: [],
   tendrils: [],
+  currents: [],
   bloomT: 0,
   fadeT: 0,
   flash: 0,
@@ -929,6 +976,7 @@ function setupRun(flavor, levelIndex) {
   state.tendrils = [];
   state.tendrilApplied = null;
   state.tendrilCooldown = 0;
+  state.currents = [new Current(), new Current()];
 }
 
 function startRun(flavor, levelIndex) {
@@ -989,6 +1037,15 @@ function updatePlaying(dt) {
       m.respawn();
     }
   }
+
+  // Zumbido posicional de la mota rara: sube de volumen cuanto más cerca
+  // esté, con un ligero pulso propio, para que perseguirla se sienta como
+  // una búsqueda guiada por oído y no sólo un hallazgo visual casual.
+  let rareDist = Infinity;
+  for (const m of state.motes) if (m.rare) rareDist = Math.min(rareDist, dist(player.x, player.y, m.x, m.y));
+  const rareT = clamp(1 - rareDist / 420, 0, 1);
+  const rarePulse = 0.75 + Math.sin(state.t * 3.4) * 0.25;
+  Audio2.rareHum(rareT * rareT * rarePulse);
 
   // El número de zarcillos objetivo escala con la Luz, pero se aplica con
   // histéresis: un cambio de umbral (por ejemplo, tras recibir un golpe)
@@ -1086,11 +1143,15 @@ function update(dt) {
   dustLayers.forEach((l) => l.update(dt, state.t));
   bokeh.update(dt);
   if (state.runCfg && state.runCfg.flavor === "chill") chillAura.update(dt);
+  state.currents.forEach((c) => c.update(state.t));
   particles.update(dt);
 
   if (state.mode === "playing") updatePlaying(dt);
-  else if (state.mode === "blooming") updateBlooming(dt);
-  else if (state.mode === "lose") {
+  else {
+    Audio2.rareHum(0);
+    if (state.mode === "blooming") updateBlooming(dt);
+  }
+  if (state.mode === "lose") {
     state.fadeT += dt;
     if (state.fadeT > 1.4 && !state.canRestart) {
       setTimeout(() => (state.canRestart = true), 500);

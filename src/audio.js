@@ -126,6 +126,45 @@ const Audio2 = (() => {
     o2.stop(now + 1.2);
   }
 
+  let rareNodes = null;
+  function ensureRareHum() {
+    if (rareNodes || !ctx) return;
+    const now = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = 1046.5; // brillante pero suave, distinto del chime
+    const o2 = ctx.createOscillator();
+    o2.type = "sine";
+    o2.frequency.value = 1568.0; // quinta arriba, da el "shimmer"
+    const g = ctx.createGain();
+    g.gain.value = 0.0001;
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.0001;
+    o.connect(g);
+    o2.connect(g2);
+    g.connect(master);
+    g2.connect(master);
+    const send = ctx.createGain();
+    send.gain.value = 0.4;
+    g.connect(send);
+    send.connect(delay);
+    o.start(now);
+    o2.start(now);
+    rareNodes = { g, g2 };
+  }
+
+  function rareHum(intensity) {
+    if (!ctx) return;
+    ensureRareHum();
+    const now = ctx.currentTime;
+    const t = Math.max(0, Math.min(1, intensity));
+    // setTargetAtTime evita "clics": el volumen resbala hacia el objetivo
+    // en vez de saltar, así el zumbido sube/baja con la distancia sin
+    // sonar entrecortado frame a frame.
+    rareNodes.g.gain.setTargetAtTime(t * 0.05, now, 0.25);
+    rareNodes.g2.gain.setTargetAtTime(t * 0.02, now, 0.25);
+  }
+
   function hit() {
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -197,5 +236,5 @@ const Audio2 = (() => {
     o.stop(now + 1.9);
   }
 
-  return { resume, chime, hit, bloom, fade, setAmbientTension };
+  return { resume, chime, hit, bloom, fade, setAmbientTension, rareHum };
 })();
