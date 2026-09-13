@@ -126,3 +126,23 @@ tangente al calcular la normal, para que curvas muy cerradas nunca generen
 un vector de silueta desbocado) y se subió el grosor/opacidad mínimos de la
 punta, para que ningún zarcillo llegue a leerse como "borrado" por su propio
 desvanecimiento hacia la punta.
+
+## Investigación: la gota se veía "rara"
+Causa raíz: el pulso de crecimiento al comer una mota grande (`popScale`)
+deformaba la gota por *dos* caminos a la vez — el radio (`R`) y además el
+propio `sx/sy` del squash-stretch de movimiento. Comer una mota grande
+mientras se iba rápido sumaba ambas deformaciones y producía una silueta
+asimétrica y alargada de forma inconsistente. Ahora `popScale` sólo
+engorda el radio (pulso uniforme, "inhalar luz"); el squash-stretch
+direccional depende únicamente de la velocidad, sin mezclarse con el pulso
+de alimentación.
+
+## Chill: la floración se sentía como "fin de nivel"
+El bucle de floración en Chill ya reiniciaba la Luz a un tercio y volvía a
+`playing` (nunca a `win`) — no había regresión mecánica al menú. El
+problema era de sensación: 2.4s con el personaje congelado en el centro y
+un flash a pantalla completa, igual que en Niveles/Clásico, se percibe como
+que la partida terminó aunque técnicamente continúe. Se añadió
+`cfg.bloomDuration` por modo: Chill florece en 0.9s (pulso rápido de
+celebración que no corta el flujo de farmear/relajarse), Niveles y Clásico
+mantienen los 2.4s originales (el momento de victoria merece pesar más).

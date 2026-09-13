@@ -508,8 +508,8 @@ const player = {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    const sx = this.stretch + this.popScale * 0.3;
-    const sy = 1 / Math.sqrt(this.stretch) - this.popScale * 0.15;
+    const sx = this.stretch;
+    const sy = 1 / Math.sqrt(this.stretch);
     ctx.scale(sx, sy);
 
     const flashMix = this.hitFlash;
@@ -746,13 +746,13 @@ function buildRunCfg(flavor, levelIndex) {
       normal: { tendrilBase: 1, tendrilExtra: 3 },
     };
     const d = map[density] || map.few;
-    return { flavor, lightMax: 100, decay: 0, tendrilBase: d.tendrilBase, tendrilExtra: d.tendrilExtra, speedMul: 0.85, timeLimit: null, noLose: true, loopBloom: true };
+    return { flavor, lightMax: 100, decay: 0, tendrilBase: d.tendrilBase, tendrilExtra: d.tendrilExtra, speedMul: 0.85, timeLimit: null, noLose: true, loopBloom: true, bloomDuration: 0.9 };
   }
   if (flavor === "levels") {
     const lvl = LEVELS[levelIndex];
-    return { flavor, lightMax: lvl.target, decay: 0.8, tendrilBase: lvl.tendrilBase, tendrilExtra: lvl.tendrilExtra, speedMul: lvl.speedMul, timeLimit: lvl.time, noLose: false, loopBloom: false, levelIndex };
+    return { flavor, lightMax: lvl.target, decay: 0.8, tendrilBase: lvl.tendrilBase, tendrilExtra: lvl.tendrilExtra, speedMul: lvl.speedMul, timeLimit: lvl.time, noLose: false, loopBloom: false, levelIndex, bloomDuration: 2.4 };
   }
-  return { flavor: "classic", lightMax: 100, decay: 0.8, tendrilBase: 1, tendrilExtra: 4, speedMul: 1, timeLimit: null, noLose: false, loopBloom: false };
+  return { flavor: "classic", lightMax: 100, decay: 0.8, tendrilBase: 1, tendrilExtra: 4, speedMul: 1, timeLimit: null, noLose: false, loopBloom: false, bloomDuration: 2.4 };
 }
 
 // ---------- Estado del juego ----------
@@ -927,7 +927,7 @@ function updatePlaying(dt) {
 function updateBlooming(dt) {
   state.bloomT += dt;
   player.trail = [];
-  if (state.bloomT > 2.4) {
+  if (state.bloomT > state.runCfg.bloomDuration) {
     if (state.runCfg.loopBloom) {
       state.light = state.runCfg.lightMax * 0.32;
       state.mode = "playing";
@@ -1215,7 +1215,7 @@ function draw() {
   const baseR = 15;
 
   if (state.mode === "blooming" || state.mode === "win") {
-    const k = clamp(state.bloomT / 2.4, 0, 1);
+    const k = clamp(state.bloomT / state.runCfg.bloomDuration, 0, 1);
     const spin = state.mode === "win" ? state.t * 0.15 : state.bloomT * 0.6;
     const breathe = state.mode === "win" ? 1 + Math.sin(state.t * 1.1) * 0.04 : 1;
     ctx.save();
@@ -1257,7 +1257,7 @@ function draw() {
     ctx.fillRect(-40, -40, W + 80, H + 80);
   }
   if (state.mode === "blooming") {
-    const k = clamp(state.bloomT / 2.4, 0, 1);
+    const k = clamp(state.bloomT / state.runCfg.bloomDuration, 0, 1);
     ctx.fillStyle = `rgba(255,226,170,${k * 0.35})`;
     ctx.fillRect(-40, -40, W + 80, H + 80);
   }
