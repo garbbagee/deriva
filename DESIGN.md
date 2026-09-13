@@ -207,3 +207,49 @@ que la partida terminó aunque técnicamente continúe. Se añadió
 `cfg.bloomDuration` por modo: Chill florece en 0.9s (pulso rápido de
 celebración que no corta el flujo de farmear/relajarse), Niveles y Clásico
 mantienen los 2.4s originales (el momento de victoria merece pesar más).
+
+## Ideas grandes — roadmap no oficial (ninguna implementada)
+Brainstorm curado por el jugador; nada de esto se construye salvo pedido
+explícito. Reglas que aplican a TODAS las entradas de esta lista cuando
+llegue el momento de construir alguna:
+- Deben expresarse **por niveles** (progresión estructurada), no sólo como
+  un modificador global de Clásico.
+- Todo lo que afecte dificultad debe poder **activarse o desactivarse
+  desde la configuración de Chill**, siguiendo el patrón ya existente de
+  "zarcillos: ninguno/pocos/normal" — Chill nunca debe imponer una
+  amenaza nueva sin que el jugador pueda apagarla.
+
+**Biomas** (la más desarrollada — diseño acordado, no sólo idea suelta):
+- Zoom normal por defecto, igual que ahora. El jugador puede alejar mucho
+  la cámara (gesto/tecla a definir) y ahí, a lo lejos, aparecen otros
+  biomas como manchas abstractas tipo nebulosa/galaxia — un aura de color
+  y forma distintas por bioma, **sin estrellas ni elementos figurativos**,
+  pura abstracción de color (mismo lenguaje visual que `ChillAura`/
+  `Bokeh`, escalado a "vista de universo").
+- El jugador tiene que viajar hasta esa mancha (moverse hacia ella con la
+  cámara todavía alejada). Al llegar, la cámara se acerca sola de vuelta
+  al zoom normal por defecto — y ahí ya se está dentro del nuevo bioma:
+  paleta propia, motas propias.
+- Se siente como "un gran universo": no es un menú de selección de
+  bioma, es viajar físicamente hasta ahí.
+
+**Otras ideas confirmadas (sin desarrollar en detalle todavía):**
+- Evento de "Gran sombra" en el nivel final de Niveles — una entidad
+  grande con fases/patrón propio, no sólo más zarcillos genéricos.
+- Capa narrativa ambiental: fragmentos de una sola línea, evocadores no
+  explicativos, la primera vez que ocurre un hito.
+- Corrientes visibles y manipulables — evolución de las corrientes
+  invisibles actuales: tenues, aprendibles, usables a favor del jugador
+  (ej. surfear una corriente para escapar de un zarcillo).
+- Depredadores con IA simple: amenaza que persigue de verdad (detección
+  de línea de visión), no sólo deriva pasiva.
+- PWA instalable + leaderboard liviano, sin cuentas — ranking anónimo
+  local con opción de compartir.
+- Fusión/división de gotas como mecánica de un modo aparte (gota grande
+  más lenta/resistente vs. gota partida más rápida/frágil) — sin tocar
+  el balance de Clásico.
+
+**Descartadas explícitamente (no reconsiderar sin que el jugador las
+vuelva a pedir):** capa de progreso entre sesiones (desbloqueables
+persistentes), modo cooperativo/competitivo de 2 jugadores, editor/
+semillas de Niveles compartibles.
