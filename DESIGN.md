@@ -55,3 +55,33 @@ alivio ganado, no un checkpoint más.
 ## Alcance (deliberadamente pequeño)
 Una escena, un mecánica, un medidor, dos tipos de mota, un tipo de amenaza,
 menú, juego, victoria, derrota, reinicio. Nada más.
+
+## Modos de juego
+- **Deriva (clásico):** la experiencia original descrita arriba.
+- **Chill:** sin decaimiento de Luz y sin derrota — se puede comer motas
+  infinitamente. Al llegar al máximo, la gota florece como celebración y
+  continúa (el medidor se reinicia a un tercio). Los zarcillos son opcionales
+  y configurables (ninguno / pocos / normal) para dejar la sesión puramente
+  relajante o darle algo de tensión.
+- **Niveles:** 5 niveles con objetivo de Luz y límite de tiempo crecientes.
+  Superar un nivel desbloquea el siguiente (progreso guardado). Se pierde por
+  quedarse sin Luz o por agotar el tiempo.
+
+## Ajustes (persistentes, localStorage)
+- Sensibilidad de control: un único valor (0.5x–2.0x) que afecta por igual
+  la respuesta al ratón (rigidez del resorte que persigue el puntero) y la
+  velocidad efectiva de WASD/flechas.
+- Densidad de zarcillos en modo Chill.
+- Pantalla completa (tecla F o icono en la esquina), y pausa (Esc) con acceso
+  rápido a estos mismos ajustes sin salir de la partida.
+
+## Notas técnicas de calidad visual
+- Resolución de canvas ligada a devicePixelRatio (hasta 3x) para texto y
+  trazos nítidos en pantallas de alta densidad.
+- Los zarcillos se dibujan como una silueta orgánica ahusada (gruesa en la
+  base, fina en la punta) con relleno degradado y núcleo oscuro, no como una
+  simple línea de grosor uniforme.
+- Aparición/desaparición de zarcillos siempre con fundido (alpha in/out de
+  ~0.6s) para que ajustar la dificultad nunca se sienta como un "pop" — antes
+  un zarcillo podía desvanecerse de golpe a media pantalla; ahora siempre
+  se disuelve suavemente.

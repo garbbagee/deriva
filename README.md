@@ -16,13 +16,24 @@ JavaScript puro, sin dependencias externas.
 - Absorbe la luz cian y violeta, evita los zarcillos de sombra.
 - Llena el medidor superior para florecer y ganar. Si tu luz llega a cero,
   la oscuridad te cubre.
+- **F** o el icono de la esquina: pantalla completa. **Esc**: pausa y ajustes
+  rápidos (sensibilidad de control, densidad de zarcillos en Chill).
+
+## Modos
+
+- **Deriva:** el modo clásico descrito arriba.
+- **Chill:** sin derrota, come motas infinitamente; los zarcillos son
+  opcionales y configurables en Ajustes.
+- **Niveles:** 5 niveles con objetivo y límite de tiempo crecientes; el
+  progreso se guarda localmente.
 
 ## Estructura
 
 ```
-index.html     punto de entrada
-style.css      estilos mínimos (canvas a pantalla completa)
-src/audio.js   motor de audio sintetizado (Web Audio API, sin archivos)
-src/main.js    lógica del juego, física, partículas y render
-DESIGN.md      documento de diseño
+index.html       punto de entrada
+style.css        estilos mínimos (canvas a pantalla completa)
+src/settings.js  ajustes y progreso persistentes (localStorage)
+src/audio.js     motor de audio sintetizado (Web Audio API, sin archivos)
+src/main.js      lógica del juego, física, partículas, UI y render
+DESIGN.md        documento de diseño
 ```
