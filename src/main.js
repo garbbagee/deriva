@@ -7,6 +7,13 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 const TAU = Math.PI * 2;
+function lerpColor(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const r = Math.round(lerp((pa >> 16) & 255, (pb >> 16) & 255, t));
+  const g = Math.round(lerp((pa >> 8) & 255, (pb >> 8) & 255, t));
+  const bl = Math.round(lerp(pa & 255, pb & 255, t));
+  return `rgb(${r},${g},${bl})`;
+}
 
 const canvas = document.getElementById("scene");
 const ctx = canvas.getContext("2d");
@@ -393,9 +400,10 @@ class ChillAura {
     this.items = Array.from({ length: count }, () => ({
       x: rand(0, W), y: rand(0, H), r: rand(260, 460),
       vx: rand(-1.1, 1.1), vy: rand(-1.1, 1.1),
-      hue: Math.random() < 0.5 ? COL.player : COL.shadow,
+      huePhase: rand(0, TAU), hueFreq: rand(0.006, 0.013),
       phase: rand(0, TAU), freq: rand(0.045, 0.085),
-      baseA: rand(0.02, 0.04),
+      rPhase: rand(0, TAU), rFreq: rand(0.02, 0.04),
+      baseA: rand(0.035, 0.06),
     }));
   }
   update(dt) {
@@ -411,14 +419,21 @@ class ChillAura {
   draw(t) {
     ctx.save();
     for (const it of this.items) {
+      // Deriva de color muy lenta (ciclo de varios minutos) entre los dos
+      // tonos fríos de la paleta, para que el aura se sienta viva sin que
+      // el cambio en sí sea perceptible instante a instante.
+      const huT = 0.5 + Math.sin(t * it.hueFreq + it.huePhase) * 0.5;
+      const col = lerpColor(COL.player, COL.shadow, huT);
       const breathe = 0.6 + Math.sin(t * it.freq + it.phase) * 0.4;
+      const rBreathe = 1 + Math.sin(t * it.rFreq + it.rPhase) * 0.15;
       ctx.globalAlpha = it.baseA * breathe;
-      const g = ctx.createRadialGradient(it.x, it.y, 0, it.x, it.y, it.r);
-      g.addColorStop(0, it.hue);
+      const R = it.r * rBreathe;
+      const g = ctx.createRadialGradient(it.x, it.y, 0, it.x, it.y, R);
+      g.addColorStop(0, col);
       g.addColorStop(1, "transparent");
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(it.x, it.y, it.r, 0, TAU);
+      ctx.arc(it.x, it.y, R, 0, TAU);
       ctx.fill();
     }
     ctx.restore();

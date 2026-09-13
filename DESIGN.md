@@ -90,14 +90,16 @@ menú, juego, victoria, derrota, reinicio. Nada más.
   muestra `luz actual / objetivo` abajo a la izquierda para que el jugador
   vea la meta creciente (antes ese espacio mostraba el cronómetro, que no
   aplica en Chill).
-- **Aura ambiental de Chill:** capa de fondo muy abstracta y de contraste
-  bajísimo (alpha 0.02–0.04), 4 manchas enormes de gradiente radial en los
-  dos tonos fríos de la paleta (cian del jugador / violeta de sombra —
-  nunca el dorado de la floración), que derivan muy lento y "respiran" en
-  alpha con periodos largos e independientes. Sólo existe en Chill, se
-  dibuja detrás de todo (incluso detrás del polvo de profundidad), y no
-  reacciona a peligro ni progreso — es puramente ambiental, para acompañar
-  sesiones largas sin nunca competir visualmente con motas o zarcillos.
+- **Aura ambiental de Chill:** capa de fondo abstracta, 4 manchas enormes de
+  gradiente radial en un punto intermedio entre los dos tonos fríos de la
+  paleta (cian del jugador / violeta de sombra — nunca el dorado de la
+  floración). Cada mancha deriva de posición, respira en alpha/tamaño, y
+  además cruza de color entre cian y violeta en un ciclo de varios minutos
+  (`hueFreq` 0.006–0.013) — perceptible si se le presta atención un rato,
+  pero nunca de un frame a otro. Alpha subido a 0.035–0.06 para que sea
+  notorio sin dañar la vista. Sólo existe en Chill, se dibuja detrás de todo
+  (incluso detrás del polvo de profundidad), y no reacciona a peligro ni
+  progreso — es puramente ambiental.
 
 ## Modos de juego
 - **Deriva (clásico):** la experiencia original descrita arriba.
