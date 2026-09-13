@@ -999,13 +999,165 @@ class Tendril {
   }
 }
 
+// ---------- Gran Sombra (jefe del nivel final) ----------
+// Una única entidad grande con patrón propio, no más zarcillos genéricos:
+// acecha derivando por la escena, telegrafía un embiste hacia donde
+// estabas parado (0.85s de aviso — más que suficiente para reaccionar) y
+// se repliega. El acecho se acorta cuanta más Luz tenés, así que el
+// propio progreso del jugador es lo que sube la tensión en el tramo
+// final, igual que con los zarcillos normales. Sigue sin haber botón de
+// ataque: esto se sobrevive, nunca se combate.
+class Shadow {
+  constructor(speedMul) {
+    this.x = W / 2 + rand(-80, 80);
+    this.y = H * 0.22;
+    this.wanderX = this.x; this.wanderY = this.y;
+    this.wanderPhase = rand(0, TAU);
+    this.speedMul = speedMul;
+    this.phase = "lurk";
+    this.phaseT = 0;
+    this.lurkFor = rand(2.6, 3.4);
+    this.targetX = this.x; this.targetY = this.y;
+    this.vx = 0; this.vy = 0;
+    this.coreR = 30;
+    this.limbs = Array.from({ length: 5 }, (_, i) => ({
+      a: (i / 5) * TAU + rand(-0.2, 0.2),
+      len: rand(0.75, 1),
+      wobPhase: rand(0, TAU),
+      wobFreq: rand(0.8, 1.4),
+    }));
+    this.t = 0;
+  }
+  update(dt, t, px, py, lr) {
+    this.t = t;
+    this.phaseT += dt;
+    if (this.phase === "lurk") {
+      this.wanderX = W / 2 + Math.sin(t * 0.11 + this.wanderPhase) * W * 0.28;
+      this.wanderY = H * 0.3 + Math.sin(t * 0.08 + this.wanderPhase * 1.4) * H * 0.16;
+      this.x = lerp(this.x, this.wanderX, 0.02);
+      this.y = lerp(this.y, this.wanderY, 0.02);
+      const wait = this.lurkFor - lr * 1.6;
+      if (this.phaseT > Math.max(1.1, wait)) {
+        this.phase = "telegraph"; this.phaseT = 0;
+        this.targetX = px; this.targetY = py;
+      }
+    } else if (this.phase === "telegraph") {
+      if (this.phaseT > 0.85) {
+        this.phase = "lunge"; this.phaseT = 0;
+        const a = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+        const speed = (520 + lr * 160) * this.speedMul;
+        this.vx = Math.cos(a) * speed; this.vy = Math.sin(a) * speed;
+      }
+    } else if (this.phase === "lunge") {
+      this.x += this.vx * dt; this.y += this.vy * dt;
+      if (this.phaseT > 0.42) { this.phase = "recover"; this.phaseT = 0; }
+    } else if (this.phase === "recover") {
+      const damp = Math.pow(0.01, dt);
+      this.vx *= damp; this.vy *= damp;
+      this.x += this.vx * dt; this.y += this.vy * dt;
+      if (this.phaseT > 1.0) {
+        this.phase = "lurk"; this.phaseT = 0;
+        this.lurkFor = rand(2.6, 3.4);
+        this.wanderX = this.x; this.wanderY = this.y;
+      }
+    }
+    this.x = clamp(this.x, 60, W - 60);
+    this.y = clamp(this.y, 60, H - 60);
+  }
+  distToPlayer(px, py) {
+    const reach = this.coreR + (this.phase === "lunge" ? 26 : 12);
+    return dist(px, py, this.x, this.y) - reach;
+  }
+  draw(sceneAlpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = sceneAlpha;
+    const charging = this.phase === "telegraph";
+    const chargeK = charging ? clamp(this.phaseT / 0.85, 0, 1) : 0;
+    const lungeK = this.phase === "lunge" ? 1 : 0;
+    const reach = 70 + chargeK * 50 + lungeK * 30;
+
+    // Halo y cono de carga: la señal principal de "esto está por golpear",
+    // con dirección legible hacia el punto que va a embestir.
+    if (charging) {
+      const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 140 + chargeK * 60);
+      g.addColorStop(0, `rgba(122,63,224,${0.1 + chargeK * 0.22})`);
+      g.addColorStop(1, "rgba(122,63,224,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 140 + chargeK * 60, 0, TAU);
+      ctx.fill();
+
+      const a = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(a);
+      ctx.globalAlpha = sceneAlpha * chargeK * 0.4;
+      const cg = ctx.createLinearGradient(0, 0, 260, 0);
+      cg.addColorStop(0, "rgba(201,168,255,0.5)");
+      cg.addColorStop(1, "rgba(201,168,255,0)");
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(0, -18);
+      ctx.lineTo(260, 0);
+      ctx.lineTo(0, 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Extremidades: mismo lenguaje ahusado que un zarcillo, pero varias a
+    // la vez saliendo de un único núcleo — se lee como una sola criatura
+    // grande, no como un enjambre de zarcillos sueltos.
+    for (const limb of this.limbs) {
+      const extend = reach * limb.len;
+      const wob = Math.sin(this.t * limb.wobFreq + limb.wobPhase) * (charging || lungeK ? 6 : 16);
+      const a = limb.a + (charging ? (Math.atan2(this.targetY - this.y, this.targetX - this.x) - limb.a) * chargeK * 0.5 : 0);
+      const midX = this.x + Math.cos(a) * extend * 0.55 + Math.cos(a + Math.PI / 2) * wob;
+      const midY = this.y + Math.sin(a) * extend * 0.55 + Math.sin(a + Math.PI / 2) * wob;
+      const tipX = this.x + Math.cos(a) * extend;
+      const tipY = this.y + Math.sin(a) * extend;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y);
+      ctx.quadraticCurveTo(midX, midY, tipX, tipY);
+      ctx.strokeStyle = COL.shadow;
+      ctx.lineWidth = 9;
+      ctx.lineCap = "round";
+      ctx.shadowColor = COL.shadow;
+      ctx.shadowBlur = 16;
+      ctx.stroke();
+    }
+
+    const coreGlow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.coreR * 2.4);
+    coreGlow.addColorStop(0, `rgba(180,140,255,${0.5 + chargeK * 0.3})`);
+    coreGlow.addColorStop(1, "rgba(122,63,224,0)");
+    ctx.fillStyle = coreGlow;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.coreR * 2.4, 0, TAU);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.coreR * (1 + chargeK * 0.25), 0, TAU);
+    ctx.fillStyle = COL.shadowCore;
+    ctx.shadowColor = COL.shadow;
+    ctx.shadowBlur = 26;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.coreR * 0.45, 0, TAU);
+    ctx.fillStyle = "rgba(210,180,255,0.7)";
+    ctx.shadowBlur = 10;
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
 // ---------- Niveles ----------
 const LEVELS = [
   { name: "Nivel 1", target: 55, time: 45, tendrilBase: 1, tendrilExtra: 1, speedMul: 1.0 },
   { name: "Nivel 2", target: 70, time: 50, tendrilBase: 1, tendrilExtra: 2, speedMul: 1.1 },
   { name: "Nivel 3", target: 85, time: 55, tendrilBase: 2, tendrilExtra: 2, speedMul: 1.25 },
   { name: "Nivel 4", target: 100, time: 60, tendrilBase: 2, tendrilExtra: 3, speedMul: 1.4 },
-  { name: "Nivel 5", target: 120, time: 65, tendrilBase: 3, tendrilExtra: 3, speedMul: 1.6 },
+  { name: "Nivel 5", target: 120, time: 65, tendrilBase: 1, tendrilExtra: 2, speedMul: 1.6, boss: true },
 ];
 
 // Cada floración en Chill exige más que la anterior (50, 150, 300, 600,
@@ -1032,7 +1184,7 @@ function buildRunCfg(flavor, levelIndex) {
   }
   if (flavor === "levels") {
     const lvl = LEVELS[levelIndex];
-    return { flavor, lightMax: lvl.target, decay: 0.8, tendrilBase: lvl.tendrilBase, tendrilExtra: lvl.tendrilExtra, speedMul: lvl.speedMul, timeLimit: lvl.time, noLose: false, loopBloom: false, levelIndex, bloomDuration: 2.4 };
+    return { flavor, lightMax: lvl.target, decay: 0.8, tendrilBase: lvl.tendrilBase, tendrilExtra: lvl.tendrilExtra, speedMul: lvl.speedMul, timeLimit: lvl.time, noLose: false, loopBloom: false, levelIndex, bloomDuration: 2.4, boss: !!lvl.boss };
   }
   return { flavor: "classic", lightMax: 100, decay: 0.8, tendrilBase: 1, tendrilExtra: 4, speedMul: 1, timeLimit: null, noLose: false, loopBloom: false, bloomDuration: 2.4 };
 }
@@ -1053,6 +1205,7 @@ const state = {
   motes: [],
   tendrils: [],
   currents: [],
+  shadow: null,
   bloomT: 0,
   fadeT: 0,
   flash: 0,
@@ -1098,6 +1251,7 @@ function setupRun(flavor, levelIndex) {
   state.tendrilApplied = null;
   state.tendrilCooldown = 0;
   state.currents = [new Current(), new Current()];
+  state.shadow = cfg.boss ? new Shadow(cfg.speedMul) : null;
   state.travelLatch = false;
   state.arrivalLockT = 0;
   camera.zoom = 1;
@@ -1115,6 +1269,7 @@ function arriveAtBiome(id) {
   state.tendrilApplied = null;
   state.tendrilCooldown = 0;
   state.currents = [new Current(), new Current()];
+  state.shadow = state.runCfg.boss ? new Shadow(state.runCfg.speedMul) : null;
   state.travelLatch = false;
   state.arrivalLockT = 0.8;
   camera.zoomTarget = 1;
@@ -1258,6 +1413,24 @@ function updatePlaying(dt) {
     }
   }
   state.tendrils = state.tendrils.filter((t) => !(t.phaseState === "out" && t.alpha <= 0));
+
+  if (state.shadow) {
+    state.shadow.update(dt, state.t, player.x, player.y, lr);
+    if (player.invuln <= 0 && state.shadow.distToPlayer(player.x, player.y) < 0) {
+      state.light = clamp(state.light - 28, 0, cfg.lightMax);
+      state.streak = 0;
+      player.invuln = 1.3;
+      player.hitFlash = 1;
+      const away = Math.atan2(player.y - state.shadow.y, player.x - state.shadow.x);
+      player.vx += Math.cos(away) * 460;
+      player.vy += Math.sin(away) * 460;
+      camera.kick(22);
+      state.flash = 1;
+      particles.ash(player.x, player.y, 24);
+      Audio2.hit();
+    }
+  }
+
   state.flash = Math.max(0, state.flash - dt * 2.2);
 
   if (cfg.noLose) state.light = Math.max(state.light, 8);
@@ -1480,7 +1653,7 @@ function drawBiomeMapStatus(alpha) {
     ctx.shadowBlur = 0;
     ctx.font = fnt(10);
     ctx.fillStyle = "rgba(190,212,220,0.48)";
-    ctx.fillText(`el próximo despierta al completar el nivel ${next.unlockLevel}`, W / 2, y + 18 * UI);
+    ctx.fillText(`el próximo despierta al superar ${next.unlockLevel} niveles en Niveles`, W / 2, y + 18 * UI);
   }
   ctx.restore();
 }
@@ -1790,6 +1963,7 @@ function draw() {
     state.currents.forEach((c) => c.draw(worldDetailAlpha, state.t));
     for (const m of state.motes) m.draw(worldDetailAlpha);
     for (const tdr of state.tendrils) tdr.draw(worldDetailAlpha);
+    if (state.shadow) state.shadow.draw(worldDetailAlpha);
   }
 
   particles.draw(worldDetailAlpha);
@@ -1866,7 +2040,7 @@ function draw() {
       const detail = lbl.current
         ? "ESTÁS AQUÍ"
         : lbl.locked
-          ? `COMPLETA EL NIVEL ${lbl.unlockLevel} PARA DESPERTARLO`
+          ? `SUPERA ${lbl.unlockLevel} NIVELES EN NIVELES PARA DESPERTARLO`
           : "VIAJA HACIA SU LUZ";
       ctx.fillText(detail, lbl.x, lbl.y + 17 * UI);
     }

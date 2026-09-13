@@ -232,7 +232,13 @@ te transporta ahí, con auto-zoom de regreso a la vista normal.
   amenaza propia, esa amenaza sí necesita su toggle en Chill. Los biomas aún
   bloqueados se ven a lo lejos como ecos atenuados, con el nivel necesario
   para despertarlos; se pueden descubrir desde Chill pero no visitar antes
-  de desbloquearlos.
+  de desbloquearlos. El texto de aviso dice "supera N niveles en Niveles"
+  (no "completa el nivel N") — la primera redacción confundió a un
+  jugador real, que leyó "nivel 2"/"nivel 3" como niveles aislados y
+  pensó que le faltaba un Nivel 2 que en realidad ya existe (sólo estaba
+  bloqueado hasta superar el Nivel 1, progresión normal de Niveles).
+  `unlockLevel` siempre fue un conteo acumulativo de niveles superados,
+  nunca un nivel específico — el número ahora se lee así sin ambigüedad.
 - **Una sola transformación de cámara** sirve tanto para el juego normal
   como para viajar: `zoom=1, pan=(0,0)` es la identidad exacta (cero
   cambio en partidas normales). `camera.pan()` sólo empieza a centrar la
@@ -268,9 +274,35 @@ te transporta ahí, con auto-zoom de regreso a la vista normal.
 - El jugador nunca cambia de color entre biomas (identidad constante);
   sólo el entorno — fondo, motas, zarcillos — cambia.
 
-**Otras ideas confirmadas (sin desarrollar en detalle todavía):**
-- Evento de "Gran sombra" en el nivel final de Niveles — una entidad
-  grande con fases/patrón propio, no sólo más zarcillos genéricos.
+**Gran Sombra — IMPLEMENTADO.** Entidad única (`class Shadow`) exclusiva
+del Nivel 5 (`LEVELS[4].boss = true`), en vez de sólo más zarcillos
+genéricos — de hecho el enjambre ambiental de ese nivel se redujo
+(tendrilBase/Extra 3/3 → 1/2) para que la Sombra sea la amenaza
+protagonista, no una más entre muchas.
+- **Máquina de fases**, no comportamiento pasivo: `lurk` (deriva lenta,
+  ominosa, dentro del área jugable) → `telegraph` (0.85s de aviso claro:
+  halo creciente + cono direccional hacia el punto exacto donde estabas
+  parado al iniciar la carga — tiempo de sobra para reaccionar) →
+  `lunge` (embiste rápido en esa dirección fija, no persigue durante el
+  embiste — perseguir en tiempo real se sentiría injusto) → `recover`
+  (frena, vulnerable un momento) → vuelta a `lurk`. El acecho se acorta
+  cuanta más Luz tenés (`lurkFor - lr*1.6`), así el propio progreso del
+  jugador sube la tensión en el tramo final, igual que con los zarcillos.
+- **Visualmente una sola criatura grande**, no un enjambre: 5
+  extremidades ahusadas (mismo lenguaje que un zarcillo) saliendo de un
+  único núcleo pulsante, que se extienden y orientan hacia el objetivo
+  durante la carga.
+- **Golpe más severo** que un zarcillo normal (–28 Luz vs. –16,
+  empuje 460 vs. 380, invulnerabilidad 1.3s vs. 1.1s, shake de cámara 22
+  vs. 14) — acorde a ser el clímax del modo Niveles.
+- **Sigue sin haber botón de ataque.** La Sombra no tiene HP ni se
+  "derrota": es un obstáculo que se sobrevive mientras llenás el medidor,
+  exactamente como cualquier zarcillo — nunca se introdujo combate,
+  manteniendo el "un único botón de acción: ninguno" del diseño base.
+- Verificado con simulación manual en navegador real: las 4 fases
+  ciclan correctamente, la colisión aplica el daño/empuje/invulnerabilidad
+  esperados, y el flujo normal de derrota (`state.mode = "lose"`) sigue
+  intacto cuando la Luz llega a cero por un golpe suyo.
 - Capa narrativa ambiental: fragmentos de una sola línea, evocadores no
   explicativos, la primera vez que ocurre un hito.
 - **Corrientes visibles y manipulables — IMPLEMENTADO.** `Current.draw()`
