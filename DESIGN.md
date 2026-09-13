@@ -85,3 +85,44 @@ menú, juego, victoria, derrota, reinicio. Nada más.
   ~0.6s) para que ajustar la dificultad nunca se sienta como un "pop" — antes
   un zarcillo podía desvanecerse de golpe a media pantalla; ahora siempre
   se disuelve suavemente.
+
+## Pipeline de render y escalado (revisión a fondo)
+- El tamaño del canvas se fija en dos capas: el *backing store* en píxeles
+  físicos (`innerWidth/Height * devicePixelRatio`, hasta 3x) para nitidez en
+  HiDPI, y el tamaño CSS explícito en píxeles lógicos vía `canvas.style.width/
+  height` (no `vw/vh`), para que nunca haya un reescalado adicional del
+  navegador entre ambos — esa es la causa más común de blur "misterioso".
+- `devicePixelRatio` puede cambiar sin disparar `resize` (zoom del navegador,
+  arrastrar la ventana a otro monitor). Un listener de `matchMedia` que se
+  reinstala solo detecta ese caso y vuelve a dimensionar el canvas.
+- El contexto 2D se resetea explícitamente al inicio de cada frame
+  (shadowBlur, shadowColor, alpha, grosores) para que ningún halo o sombra
+  de un dibujo anterior pueda filtrarse por accidente a otro.
+- Un factor `UI` (0.62x–1.3x, según el tamaño real de la ventana respecto a
+  una resolución de referencia) escala tipografía, botones, controles y el
+  medidor — así el menú, ajustes, niveles, pausa y HUD mantienen su
+  composición y proporciones en ventanas pequeñas, monitores grandes y
+  pantalla completa. Deliberadamente NO se aplica a la gota, las motas ni
+  los zarcillos: su tamaño en píxeles debe ser estable respecto al puntero,
+  no respecto al tamaño del monitor — escalarlos con la ventana cambiaría el
+  juego (hitboxes, dificultad) sólo por el tamaño de pantalla, algo que un
+  buen juego nunca debería hacer.
+- Cursor propio: el sistema oculta el cursor real (la gota hace de puntero
+  durante la partida), pero en cualquier pantalla de menú/ajustes/pausa se
+  dibuja un cursor propio con el mismo lenguaje visual — antes, en pausa, el
+  jugador no tenía forma de ver dónde estaba apuntando.
+
+## Investigación: zarcillo que desaparece entre 6–7
+Causa raíz real (no sólo el "pop" ya descrito): el número de zarcillos
+objetivo se recalculaba cada frame a partir de la Luz actual. Tras un golpe,
+la Luz cae de golpe y ese recálculo podía retirar un zarcillo y, apenas
+la Luz se recuperaba un poco, generar uno nuevo casi de inmediato — un
+parpadeo de baja/alta población que se percibía como "uno desaparece" aunque
+cada transición individual ya tuviera fundido. La correción aplica
+histéresis: el número aplicado sólo cambia como máximo una vez cada ~1.4s,
+así que la población se siente estable e intencional en vez de nerviosa.
+Además se endureció la geometría de la silueta (mínimo de longitud de
+tangente al calcular la normal, para que curvas muy cerradas nunca generen
+un vector de silueta desbocado) y se subió el grosor/opacidad mínimos de la
+punta, para que ningún zarcillo llegue a leerse como "borrado" por su propio
+desvanecimiento hacia la punta.

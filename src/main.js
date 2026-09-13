@@ -11,19 +11,47 @@ const TAU = Math.PI * 2;
 const canvas = document.getElementById("scene");
 const ctx = canvas.getContext("2d");
 
-let W = 0, H = 0, DPR = 1;
+let W = 0, H = 0, DPR = 1, UI = 1;
+// Factor de escala de interfaz: adapta tipografía y controles a la ventana
+// real (ventana pequeña, monitor grande, pantalla completa) sin deformar
+// la composición. Los elementos de juego (gota, motas, zarcillos) NO usan
+// este factor a propósito: su tamaño en píxeles debe ser estable respecto
+// al puntero, no respecto al tamaño del monitor.
+function computeUIScale() {
+  return clamp(Math.min(W / 1280, H / 800), 0.62, 1.3);
+}
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 3);
   W = window.innerWidth;
   H = window.innerHeight;
+  // Tamaño de respaldo en píxeles físicos (nítido en HiDPI) y tamaño CSS
+  // explícito en píxeles lógicos: evita cualquier desajuste de redondeo
+  // entre vw/vh y innerWidth/innerHeight que produciría un reescalado
+  // adicional (y por lo tanto blur) por parte del navegador.
   canvas.width = Math.round(W * DPR);
   canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
+  UI = computeUIScale();
 }
 window.addEventListener("resize", resize);
 resize();
+
+// devicePixelRatio puede cambiar sin disparar "resize" (cambiar el zoom del
+// navegador, o arrastrar la ventana a un monitor con otro factor de escala).
+// Un listener de matchMedia que se reinstala a sí mismo detecta esos casos
+// de forma robusta y evita que el canvas quede renderizado a una resolución
+// obsoleta (borroso) tras el cambio.
+function watchDPR() {
+  const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  const onChange = () => { resize(); watchDPR(); };
+  if (mq.addEventListener) mq.addEventListener("change", onChange, { once: true });
+  else mq.addListener(onChange);
+}
+watchDPR();
 
 // ---------- Paleta ----------
 const COL = {
@@ -93,14 +121,31 @@ function drawButton(cx, cy, w, h, label, opts = {}) {
   roundedRectPath(x, y, w, h, r);
   ctx.fillStyle = disabled ? "rgba(255,255,255,0.03)" : `rgba(143,245,224,${hover ? 0.16 : 0.07})`;
   ctx.fill();
-  ctx.lineWidth = 1.4;
+
+  // brillo suave que sigue al cursor dentro del botón (sólo con hover)
+  if (hover && !disabled) {
+    ctx.save();
+    ctx.beginPath();
+    roundedRectPath(x, y, w, h, r);
+    ctx.clip();
+    const g = ctx.createRadialGradient(input.px, input.py, 0, input.px, input.py, w * 0.75);
+    g.addColorStop(0, "rgba(210,255,245,0.22)");
+    g.addColorStop(1, "rgba(210,255,245,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  ctx.beginPath();
+  roundedRectPath(x, y, w, h, r);
+  ctx.lineWidth = 1.4 * UI;
   ctx.strokeStyle = disabled ? "rgba(170,190,190,0.14)" : `rgba(143,245,224,${hover ? 0.8 : 0.38})`;
-  if (hover && !disabled) { ctx.shadowColor = COL.player; ctx.shadowBlur = 18; }
+  if (hover && !disabled) { ctx.shadowColor = COL.player; ctx.shadowBlur = 18 * UI; }
   ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = opts.font || "600 15px system-ui, sans-serif";
+  ctx.font = opts.font || `600 ${Math.round(15 * UI)}px system-ui, sans-serif`;
   ctx.fillStyle = disabled ? "rgba(180,200,200,0.32)" : "rgba(235,255,250,0.94)";
   ctx.fillText(label, cx, cy + 1);
   ctx.restore();
@@ -110,20 +155,21 @@ function drawButton(cx, cy, w, h, label, opts = {}) {
 
 function drawTextLink(cx, cy, label, action) {
   ctx.save();
-  ctx.font = "13px system-ui, sans-serif";
+  ctx.font = `${Math.round(13 * UI)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const w = ctx.measureText(label).width + 44;
-  const hover = isHover(cx - w / 2, cy - 16, w, 32);
+  const w = ctx.measureText(label).width + 44 * UI;
+  const hh = 32 * UI;
+  const hover = isHover(cx - w / 2, cy - hh / 2, w, hh);
   ctx.fillStyle = hover ? "rgba(230,250,245,0.95)" : "rgba(190,220,220,0.55)";
-  if (hover) { ctx.shadowColor = COL.player; ctx.shadowBlur = 10; }
+  if (hover) { ctx.shadowColor = COL.player; ctx.shadowBlur = 10 * UI; }
   ctx.fillText(label, cx, cy);
   ctx.restore();
-  addHotspot(cx - w / 2, cy - 16, w, 32, action);
+  addHotspot(cx - w / 2, cy - hh / 2, w, hh, action);
 }
 
 function drawSegmented(cx, cy, labels, selectedIndex, onSelect) {
-  const w = 92, h = 34, gap = 8;
+  const w = 92 * UI, h = 34 * UI, gap = 8 * UI;
   const totalW = labels.length * w + (labels.length - 1) * gap;
   let x = cx - totalW / 2;
   labels.forEach((label, i) => {
@@ -135,12 +181,12 @@ function drawSegmented(cx, cy, labels, selectedIndex, onSelect) {
     roundedRectPath(x, cy - h / 2, w, h, h / 2);
     ctx.fillStyle = selected ? "rgba(143,245,224,0.22)" : hover ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.04)";
     ctx.fill();
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = 1.3 * UI;
     ctx.strokeStyle = selected ? COL.player : "rgba(200,220,220,0.25)";
-    if (selected) { ctx.shadowColor = COL.player; ctx.shadowBlur = 12; }
+    if (selected) { ctx.shadowColor = COL.player; ctx.shadowBlur = 12 * UI; }
     ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.font = "13px system-ui, sans-serif";
+    ctx.font = `${Math.round(13 * UI)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = selected ? "#eafffb" : "rgba(210,230,230,0.62)";
@@ -153,13 +199,14 @@ function drawSegmented(cx, cy, labels, selectedIndex, onSelect) {
 
 let sliderDrag = null;
 function drawSlider(cx, cy, w, value01, onChange, label) {
+  w *= UI;
   const x = cx - w / 2;
-  const trackH = 4;
+  const trackH = 4 * UI;
   ctx.save();
   ctx.textAlign = "center";
-  ctx.font = "12px system-ui, sans-serif";
+  ctx.font = `${Math.round(12 * UI)}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(210,230,230,0.6)";
-  ctx.fillText(label, cx, cy - 22);
+  ctx.fillText(label, cx, cy - 22 * UI);
   ctx.beginPath();
   roundedRectPath(x, cy - trackH / 2, w, trackH, trackH / 2);
   ctx.fillStyle = "rgba(255,255,255,0.14)";
@@ -168,33 +215,39 @@ function drawSlider(cx, cy, w, value01, onChange, label) {
   roundedRectPath(x, cy - trackH / 2, Math.max(trackH, w * value01), trackH, trackH / 2);
   ctx.fillStyle = COL.player;
   ctx.shadowColor = COL.player;
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 8 * UI;
   ctx.fill();
   ctx.shadowBlur = 0;
   const hx = x + w * value01;
-  const near = dist(input.px, input.py, hx, cy) < 16 || (sliderDrag && sliderDrag.label === label);
+  const near = dist(input.px, input.py, hx, cy) < 16 * UI || (sliderDrag && sliderDrag.label === label);
   ctx.beginPath();
-  ctx.arc(hx, cy, near ? 9 : 7, 0, TAU);
+  ctx.arc(hx, cy, (near ? 9 : 7) * UI, 0, TAU);
   ctx.fillStyle = "#eafffb";
   ctx.shadowColor = COL.player;
-  ctx.shadowBlur = near ? 16 : 8;
+  ctx.shadowBlur = (near ? 16 : 8) * UI;
   ctx.fill();
   ctx.restore();
-  addHotspot(x - 12, cy - 20, w + 24, 40, () => {
+  addHotspot(x - 12 * UI, cy - 20 * UI, w + 24 * UI, 40 * UI, () => {
     sliderDrag = { label, x, w, onChange };
     onChange(clamp((input.px - x) / w, 0, 1));
   });
 }
 
 function drawFullscreenIcon() {
-  const size = 36, pad = 14;
+  const size = 36 * UI, pad = 14 * UI;
   const x = W - pad - size, y = pad;
   const hover = isHover(x, y, size, size);
-  const m = 10, o = 4;
+  const m = 10 * UI, o = 4 * UI;
   ctx.save();
+  if (hover) {
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size * 0.72, 0, TAU);
+    ctx.fillStyle = "rgba(143,245,224,0.1)";
+    ctx.fill();
+  }
   ctx.globalAlpha = hover ? 0.95 : 0.45;
   ctx.strokeStyle = "#cfeee6";
-  ctx.lineWidth = 2.2;
+  ctx.lineWidth = 2.2 * UI;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -212,6 +265,31 @@ function drawFullscreenIcon() {
   ctx.stroke();
   ctx.restore();
   addHotspot(x, y, size, size, toggleFullscreen);
+}
+
+// El CSS oculta el cursor del sistema en todo momento (cursor: none) porque
+// durante la partida la propia gota hace de puntero. Pero en cualquier otra
+// pantalla (menú, ajustes, niveles, pausa) eso dejaría al jugador sin forma
+// de ver dónde está apuntando — así que dibujamos un cursor propio, acorde
+// a la dirección de arte, que además reacciona al pasar sobre un botón.
+function drawCursor() {
+  if (!input.hasPointer) return;
+  const x = input.px, y = input.py;
+  const hovering = !!hitTest(x, y);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, (hovering ? 8 : 5) * UI, 0, TAU);
+  ctx.strokeStyle = "rgba(232,255,250,0.85)";
+  ctx.lineWidth = 1.4 * UI;
+  ctx.shadowColor = COL.player;
+  ctx.shadowBlur = (hovering ? 12 : 5) * UI;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 1.5 * UI, 0, TAU);
+  ctx.fillStyle = "rgba(232,255,250,0.95)";
+  ctx.shadowBlur = 0;
+  ctx.fill();
+  ctx.restore();
 }
 
 // ---------- Pantalla completa ----------
@@ -586,14 +664,20 @@ class Tendril {
     if (this.alpha <= 0.01) return;
     const pts = this.points;
     if (pts.length < 2) return;
-    const baseW = 20, tipW = 3;
+    // Silueta ahusada: base gruesa, punta fina pero nunca tan fina/transparente
+    // que se lea como "desaparecida". La normal en cada punto se calcula con
+    // un mínimo de longitud de tangente (MIN_TANGENT) para que dos puntos
+    // casi coincidentes (curvas muy cerradas) nunca produzcan un vector
+    // normal desbocado que rompa la silueta durante un frame.
+    const baseW = 20, tipW = 5;
+    const MIN_TANGENT = 6;
     const left = [], right = [];
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       const prev = pts[Math.max(0, i - 1)];
       const next = pts[Math.min(pts.length - 1, i + 1)];
       const tx = next.x - prev.x, ty = next.y - prev.y;
-      const tl = Math.hypot(tx, ty) || 1;
+      const tl = Math.max(Math.hypot(tx, ty), MIN_TANGENT);
       const nx = -ty / tl, ny = tx / tl;
       const w = lerp(baseW, tipW, i / (pts.length - 1)) / 2;
       left.push({ x: p.x + nx * w, y: p.y + ny * w });
@@ -608,12 +692,19 @@ class Tendril {
     for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
     ctx.closePath();
     const grad = ctx.createLinearGradient(pts[0].x, pts[0].y, pts[pts.length - 1].x, pts[pts.length - 1].y);
-    grad.addColorStop(0, COL.shadow + "dd");
-    grad.addColorStop(1, COL.shadow + "20");
+    grad.addColorStop(0, COL.shadow + "e6");
+    grad.addColorStop(1, COL.shadow + "40");
     ctx.fillStyle = grad;
     ctx.shadowColor = COL.shadow;
     ctx.shadowBlur = 22;
     ctx.fill();
+
+    // filo luminoso sutil: ayuda a que la silueta se distinga con claridad
+    // incluso superpuesta con otro zarcillo o con el fondo más oscuro.
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(222,196,255,0.4)";
+    ctx.stroke();
 
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
@@ -626,10 +717,10 @@ class Tendril {
     ctx.stroke();
 
     const tip = pts[pts.length - 1];
-    const pulse = 4.5 + Math.sin(this.lastT * 3 + this.phase) * 1.4;
+    const pulse = 5 + Math.sin(this.lastT * 3 + this.phase) * 1.4;
     ctx.beginPath();
     ctx.arc(tip.x, tip.y, pulse, 0, TAU);
-    ctx.fillStyle = "rgba(201,168,255,0.45)";
+    ctx.fillStyle = "rgba(201,168,255,0.55)";
     ctx.shadowColor = COL.moteBig;
     ctx.shadowBlur = 14;
     ctx.fill();
@@ -684,6 +775,8 @@ const state = {
   flash: 0,
   canRestart: false,
   loseReason: null,
+  tendrilApplied: null,
+  tendrilCooldown: 0,
   t: 0,
 };
 
@@ -706,6 +799,8 @@ function setupRun(flavor, levelIndex) {
   for (let i = 0; i < 7; i++) state.motes.push(new Mote(false));
   state.motes.push(new Mote(true));
   state.tendrils = [];
+  state.tendrilApplied = null;
+  state.tendrilCooldown = 0;
 }
 
 function startRun(flavor, levelIndex) {
@@ -760,7 +855,21 @@ function updatePlaying(dt) {
     }
   }
 
-  const desired = cfg.tendrilBase + Math.floor(lr * cfg.tendrilExtra);
+  // El número de zarcillos objetivo escala con la Luz, pero se aplica con
+  // histéresis: un cambio de umbral (por ejemplo, tras recibir un golpe)
+  // no reduce ni aumenta la población instantáneamente, sino que espera un
+  // tiempo mínimo entre ajustes. Sin esto, una lr que fluctúa cerca de un
+  // umbral podía hacer que un zarcillo se marcara para desvanecerse y que,
+  // acto seguido, se generara uno nuevo — un parpadeo de "aparece/desaparece"
+  // que se sentía como un bug aunque cada transición individual ya usara fundido.
+  const rawDesired = cfg.tendrilBase + Math.floor(lr * cfg.tendrilExtra);
+  if (state.tendrilApplied === null) state.tendrilApplied = rawDesired;
+  state.tendrilCooldown = Math.max(0, state.tendrilCooldown - dt);
+  if (rawDesired !== state.tendrilApplied && state.tendrilCooldown <= 0) {
+    state.tendrilApplied = rawDesired;
+    state.tendrilCooldown = 1.4;
+  }
+  const desired = state.tendrilApplied;
   const notLeaving = state.tendrils.filter((t) => t.phaseState !== "out");
   if (notLeaving.length < desired) {
     for (let i = notLeaving.length; i < desired; i++) state.tendrils.push(new Tendril(cfg.speedMul));
@@ -870,15 +979,15 @@ function drawVignette(lr) {
 }
 
 function drawMeter(lr) {
-  const cx = W / 2, cy = 34;
-  const r = 58;
+  const cx = W / 2, cy = 34 * UI;
+  const r = 58 * UI;
   const start = Math.PI * 0.16, end = Math.PI * 0.84;
   ctx.save();
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.arc(cx, cy, r, start, end);
   ctx.strokeStyle = "rgba(255,255,255,0.12)";
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 4 * UI;
   ctx.stroke();
 
   ctx.beginPath();
@@ -888,10 +997,27 @@ function drawMeter(lr) {
   grad.addColorStop(1, lr > 0.92 ? COL.gold : COL.moteBig);
   ctx.strokeStyle = grad;
   ctx.shadowColor = COL.player;
-  ctx.shadowBlur = 10;
-  ctx.lineWidth = 4;
+  ctx.shadowBlur = 10 * UI;
+  ctx.lineWidth = 4 * UI;
   ctx.stroke();
+
+  // remates: un destello suave en cada extremo del arco para que se lea
+  // como una pieza de joyería terminada, no como una barra de progreso cortada.
+  for (const a of [start, end]) {
+    const ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 2.2 * UI, 0, TAU);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.shadowBlur = 0;
+    ctx.fill();
+  }
   ctx.restore();
+}
+
+// Helper para construir cadenas de fuente ya escaladas por UI, evitando
+// repetir Math.round(N * UI) en cada pantalla.
+function fnt(px, weight) {
+  return `${weight ? weight + " " : ""}${Math.round(px * UI)}px system-ui, sans-serif`;
 }
 
 function centerText(lines, y0) {
@@ -899,13 +1025,13 @@ function centerText(lines, y0) {
   ctx.textAlign = "center";
   let y = y0;
   for (const line of lines) {
-    ctx.font = line.font || "16px system-ui, sans-serif";
+    ctx.font = line.font || `${Math.round(16 * UI)}px system-ui, sans-serif`;
     ctx.fillStyle = line.color || "rgba(230,245,250,0.85)";
-    if (line.glow) { ctx.shadowColor = line.glow; ctx.shadowBlur = line.blur || 16; }
+    if (line.glow) { ctx.shadowColor = line.glow; ctx.shadowBlur = (line.blur || 16) * UI; }
     else ctx.shadowBlur = 0;
     ctx.globalAlpha = line.alpha === undefined ? 1 : line.alpha;
     ctx.fillText(line.text, W / 2, y);
-    y += line.gap === undefined ? 30 : line.gap;
+    y += (line.gap === undefined ? 30 : line.gap) * UI;
   }
   ctx.restore();
 }
@@ -913,25 +1039,26 @@ function centerText(lines, y0) {
 function drawMenuScreen() {
   const bob = Math.sin(state.t * 1.4) * 4;
   centerText([
-    { text: "D E R I V A", font: "600 52px system-ui, sans-serif", color: "#eafffb", glow: COL.player, blur: 30, gap: 40 },
-    { text: "una gota de luz en el abismo", font: "15px system-ui, sans-serif", color: "rgba(220,240,240,0.5)", gap: 0 },
+    { text: "D E R I V A", font: fnt(52, "600"), color: "#eafffb", glow: COL.player, blur: 30, gap: 40 },
+    { text: "una gota de luz en el abismo", font: fnt(15), color: "rgba(220,240,240,0.5)", gap: 0 },
   ], H * 0.2 + bob);
 
+  const btnW = 260 * UI, btnH = 52 * UI, gapY = 66 * UI;
   const cy0 = H * 0.5;
-  drawButton(W / 2, cy0, 260, 52, "DERIVA", { action: () => startRun("classic", 0), font: "600 17px system-ui, sans-serif" });
-  drawButton(W / 2, cy0 + 66, 260, 52, "CHILL", { action: () => startRun("chill", 0), font: "600 17px system-ui, sans-serif" });
-  drawButton(W / 2, cy0 + 132, 260, 52, "NIVELES", { action: () => { state.mode = "levelSelect"; }, font: "600 17px system-ui, sans-serif" });
+  drawButton(W / 2, cy0, btnW, btnH, "DERIVA", { action: () => startRun("classic", 0), font: fnt(17, "600") });
+  drawButton(W / 2, cy0 + gapY, btnW, btnH, "CHILL", { action: () => startRun("chill", 0), font: fnt(17, "600") });
+  drawButton(W / 2, cy0 + gapY * 2, btnW, btnH, "NIVELES", { action: () => { state.mode = "levelSelect"; }, font: fnt(17, "600") });
 
-  drawTextLink(W / 2, cy0 + 190, "ajustes", () => { state.mode = "settings"; });
+  drawTextLink(W / 2, cy0 + gapY * 2 + 58 * UI, "ajustes", () => { state.mode = "settings"; });
 }
 
 function drawSettingsScreen() {
-  centerText([{ text: "AJUSTES", font: "600 30px system-ui, sans-serif", color: "#eafffb", glow: COL.player, blur: 20 }], H * 0.2);
+  centerText([{ text: "AJUSTES", font: fnt(30, "600"), color: "#eafffb", glow: COL.player, blur: 20 }], H * 0.2);
 
   const sens = Settings.get("sensitivity");
   drawSlider(W / 2, H * 0.38, 280, (sens - 0.5) / 1.5, (v) => Settings.set("sensitivity", +(0.5 + v * 1.5).toFixed(2)), `sensibilidad de control (ratón, wasd y flechas) · ${sens.toFixed(2)}x`);
 
-  centerText([{ text: "zarcillos en modo chill", font: "12px system-ui, sans-serif", color: "rgba(210,230,230,0.55)" }], H * 0.52);
+  centerText([{ text: "zarcillos en modo chill", font: fnt(12), color: "rgba(210,230,230,0.55)" }], H * 0.52);
   const density = Settings.get("chillTendrils");
   const opts = ["none", "few", "normal"];
   drawSegmented(W / 2, H * 0.57, ["ninguno", "pocos", "normal"], opts.indexOf(density), (i) => Settings.set("chillTendrils", opts[i]));
@@ -940,32 +1067,33 @@ function drawSettingsScreen() {
 }
 
 function drawLevelSelectScreen() {
-  centerText([{ text: "NIVELES", font: "600 30px system-ui, sans-serif", color: "#eafffb", glow: COL.player, blur: 20 }], H * 0.16);
+  centerText([{ text: "NIVELES", font: fnt(30, "600"), color: "#eafffb", glow: COL.player, blur: 20 }], H * 0.16);
   const unlocked = Settings.getUnlockedLevel();
-  const startY = H * 0.3, gap = 58;
+  const startY = H * 0.3, gap = 58 * UI;
+  const btnW = 240 * UI, btnH = 46 * UI;
   LEVELS.forEach((lvl, i) => {
     const locked = i > unlocked;
     const y = startY + i * gap;
-    drawButton(W / 2, y, 240, 46, locked ? "🔒 " + lvl.name : lvl.name, {
+    drawButton(W / 2, y, btnW, btnH, locked ? "🔒 " + lvl.name : lvl.name, {
       action: locked ? null : () => startRun("levels", i),
       disabled: locked,
-      font: "600 15px system-ui, sans-serif",
+      font: fnt(15, "600"),
     });
   });
-  drawTextLink(W / 2, startY + LEVELS.length * gap + 20, "atrás", () => { state.mode = "menu"; });
+  drawTextLink(W / 2, startY + LEVELS.length * gap + 20 * UI, "atrás", () => { state.mode = "menu"; });
 }
 
 function drawPausedScreen() {
   ctx.fillStyle = "rgba(2,4,10,0.74)";
   ctx.fillRect(0, 0, W, H);
-  centerText([{ text: "EN PAUSA", font: "600 28px system-ui, sans-serif", color: "#eafffb", glow: COL.player, blur: 18 }], H * 0.24);
+  centerText([{ text: "EN PAUSA", font: fnt(28, "600"), color: "#eafffb", glow: COL.player, blur: 18 }], H * 0.24);
 
   const sens = Settings.get("sensitivity");
   drawSlider(W / 2, H * 0.38, 260, (sens - 0.5) / 1.5, (v) => Settings.set("sensitivity", +(0.5 + v * 1.5).toFixed(2)), `sensibilidad · ${sens.toFixed(2)}x`);
 
   let nextY = H * 0.56;
   if (state.runCfg && state.runCfg.flavor === "chill") {
-    centerText([{ text: "zarcillos", font: "12px system-ui, sans-serif", color: "rgba(210,230,230,0.55)" }], H * 0.48);
+    centerText([{ text: "zarcillos", font: fnt(12), color: "rgba(210,230,230,0.55)" }], H * 0.48);
     const density = Settings.get("chillTendrils");
     const opts = ["none", "few", "normal"];
     const extras = [0, 2, 3];
@@ -978,34 +1106,36 @@ function drawPausedScreen() {
     nextY = H * 0.66;
   }
 
-  drawButton(W / 2, nextY, 200, 46, "continuar", { action: () => { state.mode = state.prevMode; } });
-  drawButton(W / 2, nextY + 58, 200, 46, "menú principal", { action: () => { state.mode = "menu"; } });
+  const btnW = 200 * UI, btnH = 46 * UI, gapY = 58 * UI;
+  drawButton(W / 2, nextY, btnW, btnH, "continuar", { action: () => { state.mode = state.prevMode; } });
+  drawButton(W / 2, nextY + gapY, btnW, btnH, "menú principal", { action: () => { state.mode = "menu"; } });
 }
 
 function drawHud(lr) {
   drawMeter(lr);
   const cfg = state.runCfg;
+  const margin = 18 * UI;
   ctx.save();
-  ctx.font = "12px system-ui, sans-serif";
+  ctx.font = fnt(12);
   ctx.textAlign = "left";
   if (cfg.timeLimit != null) {
     ctx.fillStyle = state.timeLeft < 8 ? "rgba(255,150,140,0.85)" : "rgba(210,235,235,0.5)";
-    ctx.fillText(`${Math.ceil(state.timeLeft)}s restantes`, 18, H - 18);
+    ctx.fillText(`${Math.ceil(state.timeLeft)}s restantes`, margin, H - margin);
   } else if (cfg.flavor !== "chill") {
     ctx.fillStyle = "rgba(210,235,235,0.5)";
-    ctx.fillText(`${state.time.toFixed(1)}s`, 18, H - 18);
+    ctx.fillText(`${state.time.toFixed(1)}s`, margin, H - margin);
   }
   ctx.textAlign = "right";
   ctx.fillStyle = "rgba(210,235,235,0.5)";
-  ctx.fillText(`${state.motesEaten} motas`, W - 18, H - 18);
+  ctx.fillText(`${state.motesEaten} motas`, W - margin, H - margin);
   ctx.restore();
 
   if (cfg.flavor !== "chill" && cfg.timeLimit == null && lr < 0.15) {
-    centerText([{ text: "tu luz se apaga...", font: "13px system-ui, sans-serif", color: `rgba(255,150,140,${0.5 + Math.sin(state.t * 8) * 0.3})`, gap: 20 }], H - 46);
+    centerText([{ text: "tu luz se apaga...", font: fnt(13), color: `rgba(255,150,140,${0.5 + Math.sin(state.t * 8) * 0.3})`, gap: 20 }], H - 46 * UI);
   }
   if (state.time < 5) {
     const a = clamp(1 - state.time / 5, 0, 1) * 0.5;
-    centerText([{ text: "esc · pausa    f · pantalla completa", font: "11px system-ui, sans-serif", color: `rgba(200,225,225,${a})` }], H - 66);
+    centerText([{ text: "esc · pausa    f · pantalla completa", font: fnt(11), color: `rgba(200,225,225,${a})` }], H - 66 * UI);
   }
 }
 
@@ -1014,21 +1144,21 @@ function drawWinScreen() {
   if (cfg.flavor === "levels") {
     const isLast = state.levelIndex >= LEVELS.length - 1;
     centerText([
-      { text: isLast ? "¡TODOS LOS NIVELES SUPERADOS!" : `${LEVELS[state.levelIndex].name.toUpperCase()} SUPERADO`, font: "600 30px system-ui, sans-serif", color: "#fff6e2", glow: COL.gold, blur: 30, gap: 40 },
-      { text: `${state.time.toFixed(1)}s · ${state.motesEaten} motas absorbidas`, font: "14px system-ui, sans-serif", color: "rgba(255,240,210,0.7)", gap: 30 },
+      { text: isLast ? "¡TODOS LOS NIVELES SUPERADOS!" : `${LEVELS[state.levelIndex].name.toUpperCase()} SUPERADO`, font: fnt(30, "600"), color: "#fff6e2", glow: COL.gold, blur: 30, gap: 40 },
+      { text: `${state.time.toFixed(1)}s · ${state.motesEaten} motas absorbidas`, font: fnt(14), color: "rgba(255,240,210,0.7)", gap: 30 },
     ], H * 0.16);
     if (state.canRestart) {
       const alpha = 0.5 + Math.sin(state.t * 2.4) * 0.3;
-      centerText([{ text: isLast ? "toca para volver a niveles" : "toca para el siguiente nivel", color: `rgba(255,240,210,${alpha})`, font: "14px system-ui, sans-serif" }], H * 0.9);
+      centerText([{ text: isLast ? "toca para volver a niveles" : "toca para el siguiente nivel", color: `rgba(255,240,210,${alpha})`, font: fnt(14) }], H * 0.9);
     }
   } else {
     centerText([
-      { text: "HAS FLORECIDO", font: "600 44px system-ui, sans-serif", color: "#fff6e2", glow: COL.gold, blur: 34, gap: 40 },
-      { text: `${state.time.toFixed(1)}s a la deriva · ${state.motesEaten} motas absorbidas`, font: "14px system-ui, sans-serif", color: "rgba(255,240,210,0.7)", gap: 30 },
+      { text: "HAS FLORECIDO", font: fnt(44, "600"), color: "#fff6e2", glow: COL.gold, blur: 34, gap: 40 },
+      { text: `${state.time.toFixed(1)}s a la deriva · ${state.motesEaten} motas absorbidas`, font: fnt(14), color: "rgba(255,240,210,0.7)", gap: 30 },
     ], H * 0.16);
     if (state.canRestart) {
       const alpha = 0.5 + Math.sin(state.t * 2.4) * 0.3;
-      centerText([{ text: "toca para volver al menú", color: `rgba(255,240,210,${alpha})`, font: "14px system-ui, sans-serif" }], H * 0.9);
+      centerText([{ text: "toca para volver al menú", color: `rgba(255,240,210,${alpha})`, font: fnt(14) }], H * 0.9);
     }
   }
 }
@@ -1037,18 +1167,28 @@ function drawLoseScreen() {
   const cfg = state.runCfg;
   const title = state.loseReason === "time" ? "SE ACABÓ EL TIEMPO" : "LA OSCURIDAD TE CUBRIÓ";
   centerText([
-    { text: title, font: "600 34px system-ui, sans-serif", color: "#dfe8ff", glow: COL.shadow, blur: 28, gap: 44 },
-    { text: `${state.time.toFixed(1)}s · ${state.motesEaten} motas absorbidas`, font: "14px system-ui, sans-serif", color: "rgba(210,220,255,0.6)", gap: 60 },
+    { text: title, font: fnt(34, "600"), color: "#dfe8ff", glow: COL.shadow, blur: 28, gap: 44 },
+    { text: `${state.time.toFixed(1)}s · ${state.motesEaten} motas absorbidas`, font: fnt(14), color: "rgba(210,220,255,0.6)", gap: 60 },
   ], H * 0.38);
   if (state.canRestart) {
     const alpha = 0.5 + Math.sin(state.t * 2.4) * 0.3;
     const label = cfg.flavor === "levels" ? "toca para reintentar el nivel" : "toca para intentarlo de nuevo";
-    centerText([{ text: label, color: `rgba(210,220,255,${alpha})`, font: "14px system-ui, sans-serif" }], H * 0.6);
+    centerText([{ text: label, color: `rgba(210,220,255,${alpha})`, font: fnt(14) }], H * 0.6);
   }
 }
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
+  // Estado del contexto reseteado explícitamente cada frame: cualquier
+  // sombra/alpha/grosor que quedara sin limpiar de un dibujo anterior nunca
+  // debe "filtrarse" a lo que se dibuja después.
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = "transparent";
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "miter";
+
   const bgGrad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.8);
   bgGrad.addColorStop(0, COL.bg1);
   bgGrad.addColorStop(1, COL.bg0);
@@ -1134,6 +1274,7 @@ function draw() {
   if (state.mode === "paused") drawPausedScreen();
 
   drawFullscreenIcon();
+  if (state.mode !== "playing") drawCursor();
 }
 
 // ---------- Eventos ----------
