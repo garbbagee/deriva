@@ -61,6 +61,7 @@ const COL = {
   playerCore: "#e8fffa",
   moteSmall: "#6fe8ff",
   moteBig: "#c9a8ff",
+  moteRare: "#eafff5",
   shadow: "#7a3fe0",
   shadowCore: "#1a0630",
   warn: "#ff6a5e",
@@ -562,19 +563,33 @@ class Mote {
     const a = Math.atan2(cy - this.y, cx - this.x) + rand(-0.5, 0.5);
     const s = rand(18, 36);
     this.vx = Math.cos(a) * s; this.vy = Math.sin(a) * s;
-    this.r = this.big ? rand(9, 11) : rand(4, 5.5);
-    this.value = this.big ? rand(10, 14) : rand(2.8, 4);
+    this.rare = !this.big && Math.random() < 0.025;
+    // En Chill la abundancia crece muy levemente con cada floración, como
+    // sensación de progreso a largo plazo sin meter fracaso ni presión.
+    const growth = state.runCfg && state.runCfg.flavor === "chill" ? Math.min(state.chillBlooms, 8) : 0;
+    const g = 1 + growth * 0.02;
+    if (this.rare) { this.r = rand(6, 7); this.value = rand(20, 26) * g; }
+    else { this.r = (this.big ? rand(9, 11) : rand(4, 5.5)) * g; this.value = (this.big ? rand(10, 14) : rand(2.8, 4)) * g; }
     this.phase = rand(0, TAU);
   }
-  update(dt, t) {
+  update(dt, t, px, py) {
+    if (this.rare && px != null) {
+      const d = dist(this.x, this.y, px, py);
+      if (d < 150) {
+        const away = Math.atan2(this.y - py, this.x - px);
+        const flee = (1 - d / 150) * 70;
+        this.vx = lerp(this.vx, Math.cos(away) * (60 + flee), 0.06);
+        this.vy = lerp(this.vy, Math.sin(away) * (60 + flee), 0.06);
+      }
+    }
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-    this.flicker = 0.75 + Math.sin(t * 3 + this.phase) * 0.25;
+    this.flicker = 0.75 + Math.sin(t * (this.rare ? 6 : 3) + this.phase) * 0.25;
     if (this.x < -60 || this.x > W + 60 || this.y < -60 || this.y > H + 60) this.respawn();
   }
   draw() {
     const R = this.r * this.flicker;
-    const color = this.big ? COL.moteBig : COL.moteSmall;
+    const color = this.rare ? COL.moteRare : this.big ? COL.moteBig : COL.moteSmall;
     ctx.save();
     const glow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, R * 4);
     glow.addColorStop(0, color + "cc");
@@ -601,6 +616,18 @@ class Mote {
     ctx.shadowBlur = 0;
     ctx.arc(this.x, this.y, R * 0.55, 0, TAU);
     ctx.stroke();
+
+    if (this.rare) {
+      // Anillo giratorio: la marca visual de que esta mota es especial y huye.
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(234,255,245,0.5)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.lineDashOffset = -this.phase * 40 - performance.now() * 0.02;
+      ctx.arc(this.x, this.y, R * 1.7, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   }
 }
@@ -626,6 +653,10 @@ class Tendril {
     this.alpha = 0;
     this.phaseState = "in";
     this.lastT = 0;
+    this.spawnX = this.x;
+    this.spawnY = this.y;
+    this.spdPhase = rand(0, TAU);
+    this.spdFreq = rand(0.12, 0.3);
   }
   update(dt, t) {
     this.lastT = t;
@@ -638,8 +669,11 @@ class Tendril {
       this.alpha = 1;
     }
 
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
+    // Pulso de velocidad: nunca avanza a ritmo constante, así el jugador no
+    // puede memorizar un timing fijo para esquivarlo.
+    const sPulse = 1 + Math.sin(t * this.spdFreq + this.spdPhase) * 0.35;
+    this.x += this.vx * dt * sPulse;
+    this.y += this.vy * dt * sPulse;
     this.baseAngle += this.turnSpeed * dt;
     if (this.x < -260) this.x = W + 200;
     if (this.x > W + 260) this.x = -200;
@@ -664,6 +698,22 @@ class Tendril {
     if (this.alpha <= 0.01) return;
     const pts = this.points;
     if (pts.length < 2) return;
+
+    if (this.phaseState === "in") {
+      // Destello de aviso en el punto de aparición: sube la anticipación
+      // sin adelantar información que el jugador no tendría en pantalla.
+      const tele = Math.sin(this.alpha * Math.PI);
+      ctx.save();
+      ctx.globalAlpha = tele * 0.7;
+      const g = ctx.createRadialGradient(this.spawnX, this.spawnY, 0, this.spawnX, this.spawnY, 60 + tele * 40);
+      g.addColorStop(0, COL.shadow + "cc");
+      g.addColorStop(1, COL.shadow + "00");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(this.spawnX, this.spawnY, 60 + tele * 40, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
     // Silueta ahusada: base gruesa, punta fina pero nunca tan fina/transparente
     // que se lea como "desaparecida". La normal en cada punto se calcula con
     // un mínimo de longitud de tangente (MIN_TANGENT) para que dos puntos
@@ -778,7 +828,14 @@ const state = {
   tendrilApplied: null,
   tendrilCooldown: 0,
   t: 0,
+  streak: 0,
+  streakT: 0,
+  chillBlooms: 0,
 };
+
+const COMBO_WINDOW = 2.2;
+const COMBO_STEP = 0.05;
+const COMBO_MAX_STACK = 10;
 
 function setupRun(flavor, levelIndex) {
   const cfg = buildRunCfg(flavor, levelIndex);
@@ -795,6 +852,9 @@ function setupRun(flavor, levelIndex) {
   state.flash = 0;
   state.canRestart = false;
   state.loseReason = null;
+  state.streak = 0;
+  state.streakT = 0;
+  state.chillBlooms = 0;
   state.motes = [];
   for (let i = 0; i < 7; i++) state.motes.push(new Mote(false));
   state.motes.push(new Mote(true));
@@ -841,16 +901,23 @@ function updatePlaying(dt) {
   const lr = lightRatio();
   state.light = clamp(state.light - cfg.decay * dt * (0.6 + lr * 0.8), 0, cfg.lightMax);
 
+  state.streakT += dt;
+  if (state.streakT > COMBO_WINDOW) state.streak = 0;
+
   for (const m of state.motes) {
-    m.update(dt, state.t);
+    m.update(dt, state.t, player.x, player.y);
     const R = 20 + lr * 10;
     if (dist(player.x, player.y, m.x, m.y) < R + m.r) {
-      state.light = clamp(state.light + m.value, 0, cfg.lightMax);
+      state.streak += 1;
+      state.streakT = 0;
+      const comboMul = 1 + Math.min(state.streak - 1, COMBO_MAX_STACK) * COMBO_STEP;
+      state.light = clamp(state.light + m.value * comboMul, 0, cfg.lightMax);
       state.motesEaten++;
-      player.pop(m.big ? 1.0 : 0.5);
-      particles.ring(m.x, m.y, m.big ? COL.moteBig : COL.moteSmall, 6, m.big ? 90 : 55, m.big ? 0.7 : 0.45);
-      particles.burst(m.x, m.y, m.big ? COL.moteBig : COL.moteSmall, m.big ? 18 : 9, m.big ? 160 : 110, 0.6);
-      Audio2.chime(clamp(m.value / 13, 0, 1), m.big ? 2 : 1);
+      const color = m.rare ? COL.moteRare : m.big ? COL.moteBig : COL.moteSmall;
+      player.pop(m.rare ? 0.8 : m.big ? 1.0 : 0.5);
+      particles.ring(m.x, m.y, color, m.big || m.rare ? 8 : 6, m.big || m.rare ? 100 : 55, m.big || m.rare ? 0.8 : 0.45);
+      particles.burst(m.x, m.y, color, m.big || m.rare ? 22 : 9, m.big || m.rare ? 170 : 110, 0.6);
+      Audio2.chime(clamp(m.value / 13, 0, 1), m.rare ? 3 : m.big ? 2 : 1);
       m.respawn();
     }
   }
@@ -886,6 +953,7 @@ function updatePlaying(dt) {
       const d = tdr.distToPlayer(player.x, player.y);
       if (d < 16) {
         state.light = clamp(state.light - 16, 0, cfg.lightMax);
+        state.streak = 0;
         player.invuln = 1.1;
         player.hitFlash = 1;
         const away = Math.atan2(player.y - tdr.y, player.x - tdr.x);
@@ -931,6 +999,7 @@ function updateBlooming(dt) {
     if (state.runCfg.loopBloom) {
       state.light = state.runCfg.lightMax * 0.32;
       state.mode = "playing";
+      state.chillBlooms++;
       player.x = W / 2; player.y = H / 2;
       player.invuln = 0; player.hitFlash = 0;
     } else {
@@ -1114,6 +1183,16 @@ function drawPausedScreen() {
 function drawHud(lr) {
   drawMeter(lr);
   const cfg = state.runCfg;
+  if (state.streak >= 3) {
+    const pulse = 0.75 + Math.sin(state.t * 10) * 0.15;
+    centerText([{
+      text: `x${state.streak} racha`,
+      font: fnt(13, "600"),
+      color: `rgba(232,255,250,${pulse})`,
+      glow: COL.player,
+      blur: 14,
+    }], 34 * UI + 58 * UI + 26 * UI);
+  }
   const margin = 18 * UI;
   ctx.save();
   ctx.font = fnt(12);

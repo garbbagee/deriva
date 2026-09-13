@@ -56,6 +56,32 @@ alivio ganado, no un checkpoint más.
 Una escena, un mecánica, un medidor, dos tipos de mota, un tipo de amenaza,
 menú, juego, victoria, derrota, reinicio. Nada más.
 
+## Mejoras jugables (priorizadas por diversión)
+- **Racha (combo):** comer motas seguidas dentro de una ventana de 2.2s
+  acumula una racha que aumenta el valor de Luz de cada mota (+5% por nivel,
+  hasta +50%). Un golpe de zarcillo la resetea a cero. Se muestra como
+  "x{n} racha" pulsante bajo el medidor a partir de x3. Recompensa el juego
+  arriesgado (acercarse a zarcillos para encadenar motas) en vez de solo
+  evitarlos.
+- **Aviso de zarcillo entrante:** mientras un zarcillo se desvanece hacia
+  adentro (fase "in", primeros 0.6s), se dibuja un resplandor pulsante en su
+  punto de aparición en el borde de pantalla, dando una fracción de segundo
+  de anticipación periférica sin revelar información que rompa el ritmo.
+- **Pulso de velocidad del zarcillo:** su avance ya no es a magnitud
+  constante — una modulación senoidal lenta y por-zarcillo (periodo largo,
+  ±35%) hace que acelere y frene de forma impredecible, evitando que el
+  jugador memorice un timing fijo de esquiva.
+- **Mota rara:** ~2.5% de probabilidad al reaparecer una mota pequeña. Vale
+  mucho más luz (20–26 vs. 2.8–4 de una pequeña normal), es esquiva (huye
+  del jugador por debajo de 150px de distancia) y se distingue con un color
+  propio (blanco-cian pálido, nunca el dorado reservado a la floración) y un
+  anillo punteado girando. Da un micro-objetivo de persecución dentro de
+  cada partida.
+- **Progreso suave en Chill:** cada floración en Chill incrementa un
+  contador (`chillBlooms`, tope 8) que escala muy levemente el tamaño/valor
+  de las motas nuevas. Sesiones largas de farmeo se sienten un poco más
+  abundantes con el tiempo, sin introducir fracaso ni presión.
+
 ## Modos de juego
 - **Deriva (clásico):** la experiencia original descrita arriba.
 - **Chill:** sin decaimiento de Luz y sin derrota — se puede comer motas
