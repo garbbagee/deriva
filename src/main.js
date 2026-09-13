@@ -493,13 +493,15 @@ class ChillAura {
 }
 const chillAura = new ChillAura(4);
 
-// ---------- Corrientes invisibles ----------
+// ---------- Corrientes ----------
 // Dos remolinos lentos que derivan por la escena y empujan tangencialmente
 // (nunca hacia/desde su centro, siempre "alrededor") a quien esté cerca.
-// No se dibujan: son textura del espacio, no un peligro — la intención es
-// que el agua deje de sentirse como un vacío uniforme sin romper el control
-// directo del jugador (el empuje es mucho más débil sobre la gota que
-// sobre las motas).
+// Se ven muy tenues — líneas de flujo con destellos que recorren el
+// sentido del giro — para que el jugador aprenda a leerlas y las use a su
+// favor (surfear una corriente para ganar velocidad extra y esquivar un
+// zarcillo) en vez de sufrirlas como una fuerza invisible. Siguen siendo
+// más débiles sobre la gota que sobre las motas, así nunca reemplazan el
+// control directo del jugador — sólo lo asisten cuando se les da la mano.
 class Current {
   constructor() {
     this.baseX = rand(W * 0.3, W * 0.7);
@@ -511,9 +513,13 @@ class Current {
     this.phaseX = rand(0, TAU);
     this.phaseY = rand(0, TAU);
     this.radius = rand(220, 320);
-    this.strength = rand(26, 42) * (Math.random() < 0.5 ? 1 : -1);
+    this.dir = Math.random() < 0.5 ? 1 : -1;
+    this.strength = rand(40, 64) * this.dir;
     this.cx = this.baseX;
     this.cy = this.baseY;
+    this.glints = Array.from({ length: 5 }, (_, i) => ({
+      a: (i / 5) * TAU, band: rand(0.4, 0.94),
+    }));
   }
   update(t) {
     this.cx = this.baseX + Math.sin(t * this.freqX + this.phaseX) * this.ampX;
@@ -525,6 +531,50 @@ class Current {
     if (d > this.radius || d < 1) return { fx: 0, fy: 0 };
     const mag = this.strength * (1 - d / this.radius);
     return { fx: (-dy / d) * mag, fy: (dx / d) * mag };
+  }
+  draw(sceneAlpha, t) {
+    if (sceneAlpha <= 0.001) return;
+    ctx.save();
+    ctx.translate(this.cx, this.cy);
+
+    // Anillos de flujo: casi imperceptibles en reposo, sólo sugieren dónde
+    // empieza y termina la zona de influencia.
+    for (let i = 0; i < 3; i++) {
+      const band = 0.42 + i * 0.24;
+      ctx.beginPath();
+      ctx.setLineDash([2, 16]);
+      ctx.lineDashOffset = -t * 26 * this.dir - i * 40;
+      ctx.strokeStyle = `rgba(180,225,235,${0.1 * sceneAlpha})`;
+      ctx.lineWidth = 1;
+      ctx.arc(0, 0, this.radius * band, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Destellos que recorren el sentido del giro — es lo que realmente
+    // enseña "hacia dónde empuja esto" de un vistazo, sin flechas ni HUD.
+    for (const g of this.glints) {
+      const R = this.radius * g.band;
+      const ang = g.a + t * this.dir * (0.55 - g.band * 0.22);
+      const gx = Math.cos(ang) * R, gy = Math.sin(ang) * R;
+      const trailAng = ang - this.dir * 0.22;
+      const tx = Math.cos(trailAng) * R, ty = Math.sin(trailAng) * R;
+      const grad = ctx.createLinearGradient(tx, ty, gx, gy);
+      grad.addColorStop(0, "rgba(200,235,240,0)");
+      grad.addColorStop(1, `rgba(210,240,245,${0.3 * sceneAlpha})`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(gx, gy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(225,250,250,${0.4 * sceneAlpha})`;
+      ctx.arc(gx, gy, 1.6, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 }
 function currentForceAt(x, y) {
@@ -642,7 +692,7 @@ const player = {
     const ax = (tx - this.x) * k - this.vx * damp;
     const ay = (ty - this.y) * k - this.vy * damp;
     const cur = currentForceAt(this.x, this.y);
-    this.vx += (ax + cur.fx * 0.5) * dt; this.vy += (ay + cur.fy * 0.5) * dt;
+    this.vx += (ax + cur.fx * 0.65) * dt; this.vy += (ay + cur.fy * 0.65) * dt;
     this.x += this.vx * dt; this.y += this.vy * dt;
 
     const speed = Math.hypot(this.vx, this.vy);
@@ -1737,6 +1787,7 @@ function draw() {
 
   const worldModes = ["playing", "paused"];
   if (worldModes.includes(state.mode)) {
+    state.currents.forEach((c) => c.draw(worldDetailAlpha, state.t));
     for (const m of state.motes) m.draw(worldDetailAlpha);
     for (const tdr of state.tendrils) tdr.draw(worldDetailAlpha);
   }

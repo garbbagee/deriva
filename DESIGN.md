@@ -273,9 +273,20 @@ te transporta ahí, con auto-zoom de regreso a la vista normal.
   grande con fases/patrón propio, no sólo más zarcillos genéricos.
 - Capa narrativa ambiental: fragmentos de una sola línea, evocadores no
   explicativos, la primera vez que ocurre un hito.
-- Corrientes visibles y manipulables — evolución de las corrientes
-  invisibles actuales: tenues, aprendibles, usables a favor del jugador
-  (ej. surfear una corriente para escapar de un zarcillo).
+- **Corrientes visibles y manipulables — IMPLEMENTADO.** `Current.draw()`
+  dibuja, muy tenue (alpha ~0.1–0.3, nunca compite con motas/zarcillos):
+  tres anillos punteados casi imperceptibles marcando el borde de la zona
+  de influencia, y 5 destellos pálidos por corriente que recorren el
+  sentido real del giro con una estela corta tipo cometa — es lo que
+  enseña "hacia dónde empuja esto" de un vistazo, sin flechas ni HUD. La
+  fuerza en sí subió (`strength` 40–64, antes 26–42) y el multiplicador
+  sobre la gota pasó de 0.5 a 0.65 — sigue siendo más débil que el propio
+  control del jugador (la corriente asiste, no reemplaza), pero ahora
+  surfear una a favor da un empujón real, suficiente para ganar la
+  distancia extra que hace falta para esquivar un zarcillo por poco.
+  Sobre las motas sigue al 100% sin cambios. Se dibujan en la misma capa
+  ambiental que el polvo/bokeh y respetan el mismo `worldDetailAlpha`
+  que todo lo demás durante el zoom de viaje entre biomas.
 - Depredadores con IA simple: amenaza que persigue de verdad (detección
   de línea de visión), no sólo deriva pasiva.
 - PWA instalable + leaderboard liviano, sin cuentas — ranking anónimo
