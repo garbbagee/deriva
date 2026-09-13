@@ -219,19 +219,43 @@ llegue el momento de construir alguna:
   "zarcillos: ninguno/pocos/normal" — Chill nunca debe imponer una
   amenaza nueva sin que el jugador pueda apagarla.
 
-**Biomas** (la más desarrollada — diseño acordado, no sólo idea suelta):
-- Zoom normal por defecto, igual que ahora. El jugador puede alejar mucho
-  la cámara (gesto/tecla a definir) y ahí, a lo lejos, aparecen otros
-  biomas como manchas abstractas tipo nebulosa/galaxia — un aura de color
-  y forma distintas por bioma, **sin estrellas ni elementos figurativos**,
-  pura abstracción de color (mismo lenguaje visual que `ChillAura`/
-  `Bokeh`, escalado a "vista de universo").
-- El jugador tiene que viajar hasta esa mancha (moverse hacia ella con la
-  cámara todavía alejada). Al llegar, la cámara se acerca sola de vuelta
-  al zoom normal por defecto — y ahí ya se está dentro del nuevo bioma:
-  paleta propia, motas propias.
-- Se siente como "un gran universo": no es un menú de selección de
-  bioma, es viajar físicamente hasta ahí.
+**Biomas — IMPLEMENTADO (v1).** Un solo universo continuo, no un menú de
+selección: alejar la cámara (rueda del mouse) revela otros biomas como
+nebulosas abstractas a lo lejos; volar físicamente hasta una desbloqueada
+te transporta ahí, con auto-zoom de regreso a la vista normal.
+- **Desbloqueo por nivel** (`BIOMES[i].unlockLevel`, comparado contra
+  `Settings.getUnlockedLevel()`): bioma 0 "Abismo" (paleta actual) siempre
+  disponible; bioma 1 "Grieta violeta" tras superar 2 niveles; bioma 2
+  "Umbral cian" tras superar 4. Esto es lo que satisface la regla "por
+  niveles" para esta feature — no hay toggle nuevo en Chill porque v1 sólo
+  cambia paleta/motas, ningún peligro nuevo. El día que un bioma sume una
+  amenaza propia, esa amenaza sí necesita su toggle en Chill.
+- **Una sola transformación de cámara** sirve tanto para el juego normal
+  como para viajar: `zoom=1, pan=(0,0)` es la identidad exacta (cero
+  cambio en partidas normales). `camera.pan()` sólo empieza a centrar la
+  cámara en el jugador conforme el zoom baja (0 en juego normal, por
+  diseño la cámara es fija — ver arriba). Los nodos de otros biomas se
+  dibujan con la misma matriz que las entidades locales, como si fueran
+  parte de la misma escena.
+- **El objetivo del puntero/teclado se reinterpreta en espacio local**
+  según zoom/pan (`player.update`), así que la física de seguimiento
+  existente (spring-damper) no cambió — sólo lo que cuenta como "el punto
+  al que apunta el cursor". A menor zoom, el mismo gesto cubre más
+  distancia (`zoomForTarget` nunca baja de 0.22 para que la velocidad no
+  se dispare, aunque la cámara sí puede llegar a zoom 0.05 para *ver*).
+- **Congelado durante el viaje** (`state.travelLatch`, histéresis
+  0.42/0.5 para no parpadear en el umbral): decaimiento, colisiones y
+  spawn de zarcillos se pausan por debajo del umbral — explorar el
+  universo nunca debe costarte la partida. Vuelve a jugarse en cuanto el
+  zoom sube lo suficiente.
+- **Llegada** (`arriveAtBiome`): swap de paleta (`applyBiome` muta `COL`
+  directamente — todo el código de dibujo ya lee `COL.x` cada frame, cero
+  cambios necesarios en motas/zarcillos/fondo), set fresco de motas/
+  zarcillos/corrientes, jugador recentrado, `camera.zoomTarget=1` dispara
+  el acercamiento automático. La sesión (Luz, racha, tiempo) continúa sin
+  cortes — llegar a un bioma nuevo es ambientación, no un reinicio.
+- El jugador nunca cambia de color entre biomas (identidad constante);
+  sólo el entorno — fondo, motas, zarcillos — cambia.
 
 **Otras ideas confirmadas (sin desarrollar en detalle todavía):**
 - Evento de "Gran sombra" en el nivel final de Niveles — una entidad

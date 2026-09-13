@@ -75,6 +75,42 @@ const COL = {
   gold: "#ffd27a",
 };
 
+// ---------- Biomas ----------
+// Un solo universo continuo. El bioma 0 es "casa" (paleta actual) y siempre
+// está desbloqueado; los demás se desbloquean al superar niveles de Niveles
+// (Settings.getUnlockedLevel()). El jugador/gota nunca cambia de color —
+// sólo el entorno (fondo, motas, zarcillos) cambia al llegar a uno nuevo.
+const BIOMES = [
+  {
+    id: 0, name: "Abismo", unlockLevel: 0, worldPos: { x: 0, y: 0 },
+    bg0: "#03050c", bg1: "#050a16",
+    moteSmall: "#6fe8ff", moteBig: "#c9a8ff", moteRare: "#eafff5",
+    shadow: "#7a3fe0", shadowCore: "#1a0630",
+    auraA: "#8ff5e0", auraB: "#7a3fe0",
+  },
+  {
+    id: 1, name: "Grieta violeta", unlockLevel: 2, worldPos: { x: 3000, y: -1900 },
+    bg0: "#0a0414", bg1: "#170826",
+    moteSmall: "#c98bff", moteBig: "#ff8bd6", moteRare: "#f6e8ff",
+    shadow: "#3f1fa0", shadowCore: "#120428",
+    auraA: "#c98bff", auraB: "#3f1fa0",
+  },
+  {
+    id: 2, name: "Umbral cian", unlockLevel: 4, worldPos: { x: -2600, y: 2400 },
+    bg0: "#020a0c", bg1: "#031418",
+    moteSmall: "#bdfff0", moteBig: "#7fe0ff", moteRare: "#ffffff",
+    shadow: "#2f7a86", shadowCore: "#04181a",
+    auraA: "#bdfff0", auraB: "#2f7a86",
+  },
+];
+function applyBiome(id) {
+  const b = BIOMES[id];
+  COL.bg0 = b.bg0; COL.bg1 = b.bg1;
+  COL.moteSmall = b.moteSmall; COL.moteBig = b.moteBig; COL.moteRare = b.moteRare;
+  COL.shadow = b.shadow; COL.shadowCore = b.shadowCore;
+  state.biome = id;
+}
+
 // ---------- Entrada ----------
 const input = {
   px: window.innerWidth / 2,
@@ -312,10 +348,13 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 // ---------- Cámara ----------
+const ZOOM_MIN = 0.05;
 const camera = {
   shakeMag: 0,
   x: 0, y: 0,
   driftT: 0,
+  zoom: 1,
+  zoomTarget: 1,
   update(dt) {
     this.driftT += dt;
     this.shakeMag *= Math.pow(0.001, dt);
@@ -323,8 +362,16 @@ const camera = {
     const ang = this.driftT * 0.6;
     this.x = Math.sin(ang) * 3 + (Math.random() - 0.5) * this.shakeMag;
     this.y = Math.cos(ang * 0.8) * 3 + (Math.random() - 0.5) * this.shakeMag;
+    this.zoom = lerp(this.zoom, this.zoomTarget, 1 - Math.pow(0.02, dt));
   },
   kick(mag) { this.shakeMag = Math.max(this.shakeMag, mag); },
+  // Cuánto se centra la cámara en el jugador en vez de quedarse fija —
+  // 0 en juego normal (cámara fija centrada, como pide el diseño base),
+  // sube suavemente conforme se aleja para viajar entre biomas.
+  pan() {
+    const followT = clamp((1 - this.zoom) * 1.8, 0, 1);
+    return { x: (player.x - W / 2) * followT, y: (player.y - H / 2) * followT };
+  },
 };
 
 // ---------- Fondo: polvo abisal en capas ----------
@@ -571,9 +618,20 @@ const player = {
   update(dt) {
     const sens = Settings.get("sensitivity") || 1;
     const kdir = keyboardDir();
+    // El zoom de cámara (viaje entre biomas) reinterpreta el objetivo del
+    // puntero/teclado en espacio local: a menor zoom, el mismo gesto cubre
+    // mucho más terreno — así "alejar la cámara" se siente como acercarse
+    // a viajar de verdad, no sólo mirar más lejos. zoomForTarget nunca baja
+    // de 0.22 para que la velocidad de la gota no se dispare sin control
+    // incluso con la cámara al mínimo de zoom.
+    const zoomForTarget = Math.max(camera.zoom, 0.22);
+    const pan = camera.pan();
     let tx, ty;
-    if (kdir) { const d = 300 * sens; tx = this.x + kdir.x * d; ty = this.y + kdir.y * d; }
-    else { tx = input.px; ty = input.py; }
+    if (kdir) { const d = (300 * sens) / zoomForTarget; tx = this.x + kdir.x * d; ty = this.y + kdir.y * d; }
+    else {
+      tx = pan.x + (input.px - W / 2) / zoomForTarget + W / 2;
+      ty = pan.y + (input.py - H / 2) / zoomForTarget + H / 2;
+    }
 
     const k = 34 * sens, damp = 8.2 * Math.sqrt(sens);
     const ax = (tx - this.x) * k - this.vx * damp;
@@ -946,6 +1004,9 @@ const state = {
   streak: 0,
   streakT: 0,
   chillBlooms: 0,
+  biome: 0,
+  travelLatch: false,
+  arrivalLockT: 0,
 };
 
 const COMBO_WINDOW = 2.2;
@@ -977,6 +1038,26 @@ function setupRun(flavor, levelIndex) {
   state.tendrilApplied = null;
   state.tendrilCooldown = 0;
   state.currents = [new Current(), new Current()];
+  state.travelLatch = false;
+  state.arrivalLockT = 0;
+  camera.zoom = 1;
+  camera.zoomTarget = 1;
+  applyBiome(0);
+}
+
+function arriveAtBiome(id) {
+  applyBiome(id);
+  player.reset();
+  state.motes = [];
+  for (let i = 0; i < 7; i++) state.motes.push(new Mote(false));
+  state.motes.push(new Mote(true));
+  state.tendrils = [];
+  state.tendrilApplied = null;
+  state.tendrilCooldown = 0;
+  state.currents = [new Current(), new Current()];
+  state.travelLatch = false;
+  state.arrivalLockT = 0.8;
+  camera.zoomTarget = 1;
 }
 
 function startRun(flavor, levelIndex) {
@@ -1010,9 +1091,32 @@ function lightRatio() {
 // ---------- Actualización ----------
 function updatePlaying(dt) {
   const cfg = state.runCfg;
+  player.update(dt);
+
+  // Histéresis de viaje: por debajo de zoom 0.42 se considera "viajando"
+  // (se congela decaimiento/colisiones/zarcillos — explorar el universo
+  // nunca debe costarte la partida), y sólo vuelve a false por encima de
+  // 0.5, para que no parpadee cerca del umbral.
+  if (state.travelLatch && camera.zoom > 0.5) state.travelLatch = false;
+  else if (!state.travelLatch && camera.zoom < 0.42) state.travelLatch = true;
+
+  if (state.travelLatch) {
+    if (state.arrivalLockT > 0) state.arrivalLockT -= dt;
+    else {
+      const curAbsX = BIOMES[state.biome].worldPos.x + (player.x - W / 2);
+      const curAbsY = BIOMES[state.biome].worldPos.y + (player.y - H / 2);
+      for (const b of BIOMES) {
+        if (b.id === state.biome) continue;
+        if (Settings.getUnlockedLevel() < b.unlockLevel) continue;
+        if (dist(curAbsX, curAbsY, b.worldPos.x, b.worldPos.y) < 260) { arriveAtBiome(b.id); break; }
+      }
+    }
+    return;
+  }
+  if (state.arrivalLockT > 0) state.arrivalLockT = Math.max(0, state.arrivalLockT - dt);
+
   state.time += dt;
   if (cfg.timeLimit != null) state.timeLeft = Math.max(0, state.timeLeft - dt);
-  player.update(dt);
 
   const lr = lightRatio();
   state.light = clamp(state.light - cfg.decay * dt * (0.6 + lr * 0.8), 0, cfg.lightMax);
@@ -1411,6 +1515,37 @@ function draw() {
   ctx.save();
   ctx.translate(camera.x, camera.y);
 
+  // Zoom/pan de viaje entre biomas: a zoom 1 y pan (0,0) esto es la
+  // identidad exacta (cero cambio visual en juego normal). Alejar la
+  // cámara encoge y aleja el área de juego local hacia el punto donde
+  // aparecen las nebulosas de otros biomas — un único sistema de
+  // coordenadas para la escena local y el "universo" lejano.
+  const zoom = camera.zoom;
+  const pan = camera.pan();
+  ctx.translate(W / 2 - zoom * (W / 2 + pan.x), H / 2 - zoom * (H / 2 + pan.y));
+  ctx.scale(zoom, zoom);
+
+  const biomeLabels = [];
+  if (zoom < 0.92 && state.runCfg) {
+    const origin = BIOMES[state.biome].worldPos;
+    for (const b of BIOMES) {
+      if (b.id === state.biome) continue;
+      if (Settings.getUnlockedLevel() < b.unlockLevel) continue;
+      const relX = W / 2 + (b.worldPos.x - origin.x);
+      const relY = H / 2 + (b.worldPos.y - origin.y);
+      const R = 620;
+      const g = ctx.createRadialGradient(relX, relY, 0, relX, relY, R);
+      g.addColorStop(0, b.auraA + "55");
+      g.addColorStop(0.45, b.auraB + "33");
+      g.addColorStop(1, "transparent");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(relX, relY, R, 0, TAU);
+      ctx.fill();
+      biomeLabels.push({ x: W / 2 - zoom * (W / 2 + pan.x) + relX * zoom, y: H / 2 - zoom * (H / 2 + pan.y) + relY * zoom, name: b.name });
+    }
+  }
+
   const ambientModes = ["menu", "settings", "levelSelect"];
   const lr = ambientModes.includes(state.mode) ? 0.15 : lightRatio();
   if (state.runCfg && state.runCfg.flavor === "chill") chillAura.draw(state.t);
@@ -1478,6 +1613,20 @@ function draw() {
 
   ctx.restore();
 
+  if (biomeLabels.length) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = fnt(13, "600");
+    for (const lbl of biomeLabels) {
+      const a = clamp((0.92 - zoom) / 0.5, 0, 1) * 0.75;
+      ctx.fillStyle = `rgba(234,255,250,${a})`;
+      ctx.shadowColor = "rgba(180,220,255,0.6)";
+      ctx.shadowBlur = 14;
+      ctx.fillText(lbl.name.toUpperCase(), lbl.x, lbl.y);
+    }
+    ctx.restore();
+  }
+
   clearHotspots();
   if (state.mode === "menu") drawMenuScreen();
   else if (state.mode === "settings") drawSettingsScreen();
@@ -1498,6 +1647,11 @@ window.addEventListener("pointermove", (e) => {
   input.hasPointer = true;
   if (sliderDrag) sliderDrag.onChange(clamp((e.clientX - sliderDrag.x) / sliderDrag.w, 0, 1));
 });
+window.addEventListener("wheel", (e) => {
+  if (state.mode !== "playing" || !state.runCfg) return;
+  e.preventDefault();
+  camera.zoomTarget = clamp(camera.zoomTarget * Math.pow(0.9984, e.deltaY), ZOOM_MIN, 1);
+}, { passive: false });
 window.addEventListener("pointerdown", (e) => {
   input.px = e.clientX;
   input.py = e.clientY;
